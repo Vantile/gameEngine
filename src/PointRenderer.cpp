@@ -5,7 +5,7 @@
 #include <Shader.h>
 #include <VulkanUtils.h>
 
-void PointRenderer::InitPipeline(VkDevice device, VkFormat drawImageFormat)
+void PointRenderer::InitPipeline(VkDevice device, VkFormat drawImageFormat, VkFormat depthImageFormat)
 {
     Shader vertexShader(device, "shaders/point.vert.spv");
     Shader fragmentShader(device, "shaders/point.frag.spv");
@@ -33,7 +33,7 @@ void PointRenderer::InitPipeline(VkDevice device, VkFormat drawImageFormat)
     builder.DisableDepthtest();
 
     builder.SetColorAttachmentFormat(drawImageFormat);
-    builder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+    builder.SetDepthFormat(depthImageFormat);
 
     m_PointPipeline = builder.BuildPipeline(device);
 }

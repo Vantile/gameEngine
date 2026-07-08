@@ -724,7 +724,7 @@ void VulkanRenderer::InitRenderPipeline()
 
 void VulkanRenderer::InitPointPipeline()
 {
-    m_PointRenderer.InitPipeline(m_Device, m_DrawImage.m_ImageFormat);
+    m_PointRenderer.InitPipeline(m_Device, m_DrawImage.m_ImageFormat, m_DepthImage.m_ImageFormat);
 
     m_MainDeletionQueue.PushFunction([&]() {
         m_PointRenderer.DeletePipeline(m_Device);

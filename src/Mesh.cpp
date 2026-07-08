@@ -7,6 +7,21 @@ void Mesh::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 
 }
 
+void Mesh::AllocateBuffers()
+{
+
+}
+
+void Mesh::UpdateBuffers()
+{
+
+}
+
+void Mesh::DestroyBuffers()
+{
+
+}
+
 void Mesh::Randomize()
 {
 	std::mt19937 gen(std::random_device{}());

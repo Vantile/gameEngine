@@ -10,7 +10,7 @@ class RenderPoint;
 class PointRenderer
 {
 public:
-	void InitPipeline(VkDevice device, VkFormat drawImageFormat);
+	void InitPipeline(VkDevice device, VkFormat drawImageFormat, VkFormat depthImageFormat);
 	void DeletePipeline(VkDevice device);
 
 	void Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<std::shared_ptr<RenderPoint>>& points);

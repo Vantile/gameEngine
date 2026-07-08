@@ -26,6 +26,7 @@ void main()
 
 	//output data
 	gl_Position = vec4(v.position, 1.0f);
+	gl_PointSize = 10.0f;
 	outColor = v.color.xyz;
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;

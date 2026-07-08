@@ -10,6 +10,10 @@ class Mesh : public IRenderable
 public:
 	void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
 
+	void AllocateBuffers();
+	void UpdateBuffers();
+	void DestroyBuffers();
+
 	void Randomize();
 
 	std::vector<Vertex>& GetVertices() { return m_Vertices; }
