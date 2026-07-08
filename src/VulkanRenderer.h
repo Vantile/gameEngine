@@ -11,6 +11,7 @@
 #include <vulkan/vulkan.h>
 
 class Mesh;
+class RenderPoint;
 struct SDL_Window;
 
 struct DeletionQueue
@@ -46,8 +47,14 @@ struct FrameData
 	DescriptorAllocatorGrowable m_FrameDescriptors;
 };
 
+struct WorldContext
+{
+	//std::vector<std::shared_ptr<Mesh>> m_DrawMeshes;
+};
+
 struct DrawContext
 {
+	std::vector<std::shared_ptr<RenderPoint>> m_DrawPoints;
 	std::vector<std::shared_ptr<Mesh>> m_DrawMeshes;
 };
 
@@ -75,8 +82,14 @@ private:
 	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	void DestroyBuffer(const AllocatedBuffer& buffer);
 
+	template <typename V>
+	void AllocatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress);
+
 	template <typename V, typename I>
 	void AllocateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress);
+
+	template <typename V>
+	void UpdatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress);
 
 	template <typename V, typename I>
 	void UpdateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress);
@@ -85,6 +98,7 @@ private:
 
 	void InitBackgroundPipelines();
 	void InitRenderPipeline();
+	void InitPointPipeline();
 
 	void Draw();
 
@@ -141,6 +155,9 @@ private:
 	VkPipeline m_BackgroundPipeline;
 	VkPipelineLayout m_BackgroundPipelineLayout;
 	ComputePushConstants m_BackgroundData{};
+
+	VkPipeline m_PointPipeline;
+	VkPipelineLayout m_PointPipelineLayout;
 
 	VkPipeline m_MeshPipeline;
 	VkPipelineLayout m_MeshPipelineLayout;

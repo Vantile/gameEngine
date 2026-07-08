@@ -5,6 +5,7 @@
 #include <imgui_impl_vulkan.h>
 #include <Mesh.h>
 #include <PipelineBuilder.h>
+#include <RenderPoint.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <Shader.h>
@@ -367,6 +368,7 @@ void VulkanRenderer::InitPipelines()
     InitBackgroundPipelines();
 
     InitRenderPipeline();
+    InitPointPipeline();
 }
 
 void VulkanRenderer::InitImgui()
@@ -465,6 +467,31 @@ void VulkanRenderer::InitDefaultData()
     AllocateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
 
     m_DrawContext.m_DrawMeshes.push_back(mesh);
+
+    std::shared_ptr<RenderPoint> point1 = std::make_shared<RenderPoint>();
+    std::shared_ptr<RenderPoint> point2 = std::make_shared<RenderPoint>();
+    std::shared_ptr<RenderPoint> point3 = std::make_shared<RenderPoint>();
+    std::shared_ptr<RenderPoint> point4 = std::make_shared<RenderPoint>();
+
+    point1->GetVertex().m_Position = { 0.5, 0.5, 0 };
+    point2->GetVertex().m_Position = { -0.5, 0.5, 0 };
+    point3->GetVertex().m_Position = { 0.5, -0.5, 0 };
+    point4->GetVertex().m_Position = { -0.5, -0.5, 0 };
+
+    point1->GetVertex().m_Color = { 0, 0, 0, 1 };
+    point2->GetVertex().m_Color = { 0.5, 0.5, 0.5, 1 };
+    point3->GetVertex().m_Color = { 1, 0, 0, 1 };
+    point4->GetVertex().m_Color = { 0, 1, 0, 1 };
+
+    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point1->GetVertex(), 1 }, point1->GetVertexBuffer(), point1->GetVertexBufferAddress());
+    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point2->GetVertex(), 1 }, point2->GetVertexBuffer(), point2->GetVertexBufferAddress());
+    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point3->GetVertex(), 1 }, point3->GetVertexBuffer(), point3->GetVertexBufferAddress());
+    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point4->GetVertex(), 1 }, point4->GetVertexBuffer(), point4->GetVertexBufferAddress());
+
+    m_DrawContext.m_DrawPoints.push_back(point1);
+    m_DrawContext.m_DrawPoints.push_back(point2);
+    m_DrawContext.m_DrawPoints.push_back(point3);
+    m_DrawContext.m_DrawPoints.push_back(point4);
 }
 
 void VulkanRenderer::CreateSwapchain(uint32_t width, uint32_t height)
@@ -535,6 +562,24 @@ void VulkanRenderer::DestroyBuffer(const AllocatedBuffer& buffer)
     vmaDestroyBuffer(m_Allocator, buffer.m_Buffer, buffer.m_Allocation);
 }
 
+template <typename V>
+void VulkanRenderer::AllocatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress)
+{
+    const size_t vertexBufferSize = vertices.size() * sizeof(V);
+
+    VkBufferUsageFlags vertexBufferFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+        | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+        | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    vertexBuffer = CreateBuffer(vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    VkBufferDeviceAddressInfo deviceAddressInfo{};
+    deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    deviceAddressInfo.buffer = vertexBuffer.m_Buffer;
+    vertexBufferAddress = vkGetBufferDeviceAddress(m_Device, &deviceAddressInfo);
+
+    UpdatePointBuffers<V>(vertices, vertexBuffer, vertexBufferAddress);
+}
+
 template <typename V, typename I>
 void VulkanRenderer::AllocateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress)
 {
@@ -555,6 +600,25 @@ void VulkanRenderer::AllocateMeshBuffers(const std::span<V>& vertices, const std
     vertexBufferAddress = vkGetBufferDeviceAddress(m_Device, &deviceAddressInfo);
 
     UpdateMeshBuffers<V, I>(vertices, indices, vertexBuffer, indexBuffer, vertexBufferAddress);
+}
+
+template <typename V>
+void VulkanRenderer::UpdatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress)
+{
+    const size_t vertexBufferSize = vertices.size() * sizeof(V);
+
+    AllocatedBuffer stagingBuffer = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* data = stagingBuffer.m_Allocation->GetMappedData();
+    memcpy(data, vertices.data(), vertexBufferSize);
+    ImmediateSubmit([&](VkCommandBuffer commandBuffer) {
+        VkBufferCopy vertexCopy{ 0 };
+        vertexCopy.dstOffset = 0;
+        vertexCopy.srcOffset = 0;
+        vertexCopy.size = vertexBufferSize;
+        vkCmdCopyBuffer(commandBuffer, stagingBuffer.m_Buffer, vertexBuffer.m_Buffer, 1, &vertexCopy);
+    });
+
+    DestroyBuffer(stagingBuffer);
 }
 
 template <typename V, typename I>
@@ -637,8 +701,8 @@ void VulkanRenderer::InitBackgroundPipelines()
     computePipelineCreateInfo.layout = m_BackgroundPipelineLayout;
     computePipelineCreateInfo.stage = stageInfo;
 
-    m_BackgroundData.m_Data1 = glm::vec4{ 1, 0, 0, 1 };
-    m_BackgroundData.m_Data2 = glm::vec4{ 0, 0, 1, 1 };
+    m_BackgroundData.m_Data1 = glm::vec4{ 0, 0, 0, 1 };
+    m_BackgroundData.m_Data2 = glm::vec4{ 0, 0, 0, 1 };
 
     VULKAN_CHECK(vkCreateComputePipelines(m_Device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &m_BackgroundPipeline));
 
@@ -686,6 +750,46 @@ void VulkanRenderer::InitRenderPipeline()
     m_MainDeletionQueue.PushFunction([&]() {
         vkDestroyPipelineLayout(m_Device, m_MeshPipelineLayout, nullptr);
         vkDestroyPipeline(m_Device, m_MeshPipeline, nullptr);
+    });
+}
+
+void VulkanRenderer::InitPointPipeline()
+{
+    Shader vertexShader(m_Device, "shaders/point.vert.spv");
+    Shader fragmentShader(m_Device, "shaders/point.frag.spv");
+
+    VkPushConstantRange bufferRange{};
+    bufferRange.offset = 0;
+    bufferRange.size = sizeof(GPUDrawPushConstants);
+    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VulkanUtils::Pipeline::PipelineLayoutCreateInfo();
+    pipelineLayoutCreateInfo.pPushConstantRanges = &bufferRange;
+    pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+    pipelineLayoutCreateInfo.pSetLayouts = &m_SingleImageDescriptorLayout;
+    pipelineLayoutCreateInfo.setLayoutCount = 1;
+
+    VULKAN_CHECK(vkCreatePipelineLayout(m_Device, &pipelineLayoutCreateInfo, nullptr, &m_PointPipelineLayout));
+
+    PipelineBuilder builder;
+    builder.m_PipelineLayout = m_PointPipelineLayout;
+    builder.SetShaders(vertexShader.GetShader(), fragmentShader.GetShader());
+    builder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
+    builder.SetPolygonMode(VK_POLYGON_MODE_POINT);
+    builder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    builder.SetMultisamplingNone();
+    builder.DisableBlending();
+    //builder.EnableBlendingAdditive();
+    builder.DisableDepthtest();
+
+    builder.SetColorAttachmentFormat(m_DrawImage.m_ImageFormat);
+    builder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+
+    m_PointPipeline = builder.BuildPipeline(m_Device);
+
+    m_MainDeletionQueue.PushFunction([&]() {
+        vkDestroyPipelineLayout(m_Device, m_PointPipelineLayout, nullptr);
+        vkDestroyPipeline(m_Device, m_PointPipeline, nullptr);
     });
 }
 
@@ -866,7 +970,42 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
         pushConstants.m_WorldMatrix = glm::mat4{ 1.f };
         vkCmdPushConstants(commandBuffer, m_MeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
-        vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
+        vkCmdDrawIndexed(commandBuffer, mesh->GetIndices().size(), 1, 0, 0, 0);
+    }
+
+    for (std::shared_ptr<RenderPoint> point : m_DrawContext.m_DrawPoints)
+    {
+        // Pipeline binding
+        {
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PointPipeline);
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PointPipelineLayout, 0, 1, &gpuSceneDescriptorSet, 0, nullptr);
+
+            VkViewport viewport{};
+            viewport.x = 0;
+            viewport.y = 0;
+            viewport.width = m_DrawExtent.width;
+            viewport.height = m_DrawExtent.height;
+            viewport.minDepth = 0.f;
+            viewport.maxDepth = 1.f;
+            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+            VkRect2D scissor{};
+            scissor.offset.x = 0;
+            scissor.offset.y = 0;
+            scissor.extent.width = m_DrawExtent.width;
+            scissor.extent.height = m_DrawExtent.height;
+            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+        }
+
+        //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 1, 1, &draw.m_Material->m_MaterialSet, 0, nullptr);
+
+        GPUDrawPushConstants pushConstants;
+        pushConstants.m_VertexBuffer = point->GetVertexBufferAddress();
+        pushConstants.m_WorldMatrix = glm::mat4{ 1.f };
+        vkCmdPushConstants(commandBuffer, m_PointPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+
+        vkCmdDraw(commandBuffer, 1, 1, 0, 0);
+        //vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
     }
 
     vkCmdEndRendering(commandBuffer);
