@@ -1,6 +1,9 @@
 #include <VulkanRenderer.h>
 
 #include <assert.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_vulkan.h>
+#include <Mesh.h>
 #include <PipelineBuilder.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -41,7 +44,7 @@ void VulkanRenderer::Run()
             //}
 
             //m_MainCamera.ProcessSDLEvent(e);
-            //ImGui_ImplSDL2_ProcessEvent(&e);
+            ImGui_ImplSDL3_ProcessEvent(&e);
         }
 
         // do not draw if we are minimized
@@ -57,39 +60,24 @@ void VulkanRenderer::Run()
             ResizeSwapchain();
         }
 
-        //ImGui_ImplVulkan_NewFrame();
-        //ImGui_ImplSDL2_NewFrame();
-        //ImGui::NewFrame();
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
 
-        //if (ImGui::Begin("background"))
-        //{
-        //    ImGui::SliderFloat("Render Scale", &m_RenderScale, 0.3f, 1.f);
+        if (ImGui::Begin("Randomize"))
+        {
+            if (ImGui::Button("Randomize"))
+            {
+                for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
+                {
+                    mesh->Randomize();
+                    UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+                }
+            }
+        }
+        ImGui::End();
 
-        //    ComputeEffect& selected = m_BackgroundEffects[m_CurrentBackgroundEffect];
-
-        //    ImGui::Text("Selected effect: ", selected.m_Name);
-
-        //    ImGui::SliderInt("Effect Index", &m_CurrentBackgroundEffect, 0, m_BackgroundEffects.size() - 1);
-
-        //    ImGui::InputFloat4("data1", (float*)&selected.m_Data.m_Data1);
-        //    ImGui::InputFloat4("data2", (float*)&selected.m_Data.m_Data2);
-        //    ImGui::InputFloat4("data3", (float*)&selected.m_Data.m_Data3);
-        //    ImGui::InputFloat4("data4", (float*)&selected.m_Data.m_Data4);
-        //}
-        //ImGui::End();
-
-        //if (ImGui::Begin("Stats"))
-        //{
-        //    ImGui::Text("frametime %f ms", m_Stats.m_FrameTime);
-        //    ImGui::Text("draw time %f ms", m_Stats.m_MeshDrawTime);
-        //    ImGui::Text("update time %f ms", m_Stats.m_SceneUpdateTime);
-        //    ImGui::Text("triangles %i", m_Stats.m_TriangleCount);
-        //    ImGui::Text("draws %i", m_Stats.m_DrawCallCount);
-        //    ImGui::Text("visible check %f ms", m_Stats.m_VisibleCheckTime);
-        //}
-        //ImGui::End();
-
-        //ImGui::Render();
+        ImGui::Render();
 
         Draw();
 
@@ -125,7 +113,7 @@ void VulkanRenderer::Init()
     InitSyncStructures();
     InitDescriptors();
     InitPipelines();
-    //InitImgui();
+    InitImgui();
     InitDefaultData();
     //InitCamera();
 
@@ -381,9 +369,75 @@ void VulkanRenderer::InitPipelines()
     InitRenderPipeline();
 }
 
+void VulkanRenderer::InitImgui()
+{
+    constexpr uint32_t maxSets = 1000;
+    VkDescriptorPoolSize poolSizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, maxSets },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, maxSets },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, maxSets },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxSets },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, maxSets },
+        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, maxSets },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxSets },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxSets },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, maxSets },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, maxSets },
+        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, maxSets } };
+
+    VkDescriptorPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    poolInfo.maxSets = maxSets;
+    poolInfo.poolSizeCount = (uint32_t)std::size(poolSizes);
+    poolInfo.pPoolSizes = poolSizes;
+
+    VkDescriptorPool imguiPool;
+    VULKAN_CHECK(vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &imguiPool));
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // IF using Docking Branch
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplSDL3_InitForVulkan(m_Window);
+    ImGui_ImplVulkan_InitInfo initInfo = {};
+    initInfo.Instance = m_Instance;
+    initInfo.PhysicalDevice = m_ChosenGPU;
+    initInfo.Device = m_Device;
+    initInfo.QueueFamily = m_GraphicsQueueIndex;
+    initInfo.Queue = m_GraphicsQueue;
+    //initInfo.PipelineCache = YOUR_PIPELINE_CACHE;
+    initInfo.DescriptorPool = imguiPool;
+    initInfo.MinImageCount = FRAME_OVERLAP;
+    initInfo.ImageCount = FRAME_OVERLAP;
+    //initInfo.Allocator = YOUR_ALLOCATOR;
+    //initInfo.PipelineInfoMain.RenderPass = wd->RenderPass;
+    //initInfo.PipelineInfoMain.Subpass = 0;
+    initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    //initInfo.CheckVkResultFn = check_vk_result;
+    initInfo.UseDynamicRendering = true;
+    initInfo.PipelineInfoMain.PipelineRenderingCreateInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+    initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+    initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &m_SwapchainImageFormat;
+    ImGui_ImplVulkan_Init(&initInfo);
+
+    m_MainDeletionQueue.PushFunction([=]() {
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplSDL3_Shutdown();
+        ImGui::DestroyContext();
+        vkDestroyDescriptorPool(m_Device, imguiPool, nullptr);
+    });
+}
+
 void VulkanRenderer::InitDefaultData()
 {
-    std::array<Vertex, 4> vertices;
+    std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
+
+    std::vector<Vertex> vertices;
+    vertices.resize(4);
 
     vertices[0].m_Position = { 0.7, -0.5, 0 };
     vertices[1].m_Position = { 0.5, 0.3, 0 };
@@ -395,7 +449,8 @@ void VulkanRenderer::InitDefaultData()
     vertices[2].m_Color = { 1, 0, 0, 1 };
     vertices[3].m_Color = { 0, 1, 0, 1 };
 
-    std::array<uint32_t, 6> indices;
+    std::vector<uint32_t> indices;
+    indices.resize(6);
 
     indices[0] = 0;
     indices[1] = 1;
@@ -403,8 +458,13 @@ void VulkanRenderer::InitDefaultData()
     indices[3] = 2;
     indices[4] = 1;
     indices[5] = 3;
+
+    mesh->GetVertices() = std::move(vertices);
+    mesh->GetIndices() = std::move(indices);
     
-    AllocateMeshBuffers<Vertex, uint32_t>(vertices, indices, m_TestMesh.m_VertexBuffer, m_TestMesh.m_IndexBuffer, m_TestMesh.m_VertexBufferAddress);
+    AllocateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+
+    m_DrawContext.m_DrawMeshes.push_back(mesh);
 }
 
 void VulkanRenderer::CreateSwapchain(uint32_t width, uint32_t height)
@@ -493,6 +553,15 @@ void VulkanRenderer::AllocateMeshBuffers(const std::span<V>& vertices, const std
     deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
     deviceAddressInfo.buffer = vertexBuffer.m_Buffer;
     vertexBufferAddress = vkGetBufferDeviceAddress(m_Device, &deviceAddressInfo);
+
+    UpdateMeshBuffers<V, I>(vertices, indices, vertexBuffer, indexBuffer, vertexBufferAddress);
+}
+
+template <typename V, typename I>
+void VulkanRenderer::UpdateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress)
+{
+    const size_t vertexBufferSize = vertices.size() * sizeof(V);
+    const size_t indexBufferSize = indices.size() * sizeof(I);
 
     AllocatedBuffer stagingBuffer = CreateBuffer(vertexBufferSize + indexBufferSize,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -622,6 +691,8 @@ void VulkanRenderer::InitRenderPipeline()
 
 void VulkanRenderer::Draw()
 {
+    UpdateScene();
+
     constexpr uint64_t oneSecondInNanoseconds = 1000000000;
     FrameData& currentFrame = GetCurrentFrame();
 
@@ -675,8 +746,11 @@ void VulkanRenderer::Draw()
     VulkanUtils::Image::CopyImageToImage(commandBuffer, m_DrawImage.m_Image, swapchainImage, m_DrawExtent, m_SwapchainExtent);
 
     // Make the swapchain image transition to the presentation layout
-    //VulkanUtils::Image::TransitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    VulkanUtils::Image::TransitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    VulkanUtils::Image::TransitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    DrawImGui(commandBuffer, swapchainImageView);
+
+    VulkanUtils::Image::TransitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     VULKAN_CHECK(vkEndCommandBuffer(commandBuffer));
 
@@ -752,40 +826,67 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
     VkRenderingInfo renderInfo = VulkanUtils::Render::RenderingInfo(m_DrawExtent, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(commandBuffer, &renderInfo);
 
-    // Pipeline binding
+    //MaterialPipeline* lastPipeline = nullptr;
+    //MaterialInstance* lastMaterial = nullptr;
+    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
+    for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
     {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipeline);
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 0, 1, &gpuSceneDescriptorSet, 0, nullptr);
+        // Pipeline binding
+        {
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipeline);
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 0, 1, &gpuSceneDescriptorSet, 0, nullptr);
 
-        VkViewport viewport{};
-        viewport.x = 0;
-        viewport.y = 0;
-        viewport.width = m_DrawExtent.width;
-        viewport.height = m_DrawExtent.height;
-        viewport.minDepth = 0.f;
-        viewport.maxDepth = 1.f;
-        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+            VkViewport viewport{};
+            viewport.x = 0;
+            viewport.y = 0;
+            viewport.width = m_DrawExtent.width;
+            viewport.height = m_DrawExtent.height;
+            viewport.minDepth = 0.f;
+            viewport.maxDepth = 1.f;
+            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
-        VkRect2D scissor{};
-        scissor.offset.x = 0;
-        scissor.offset.y = 0;
-        scissor.extent.width = m_DrawExtent.width;
-        scissor.extent.height = m_DrawExtent.height;
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+            VkRect2D scissor{};
+            scissor.offset.x = 0;
+            scissor.offset.y = 0;
+            scissor.extent.width = m_DrawExtent.width;
+            scissor.extent.height = m_DrawExtent.height;
+            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+        }
+
+        //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 1, 1, &draw.m_Material->m_MaterialSet, 0, nullptr);
+
+        if (mesh->GetIndexBuffer().m_Buffer != lastIndexBuffer)
+        {
+            lastIndexBuffer = mesh->GetIndexBuffer().m_Buffer;
+            vkCmdBindIndexBuffer(commandBuffer, mesh->GetIndexBuffer().m_Buffer, 0, VK_INDEX_TYPE_UINT32);
+        }
+
+        GPUDrawPushConstants pushConstants;
+        pushConstants.m_VertexBuffer = mesh->GetVertexBufferAddress();
+        pushConstants.m_WorldMatrix = glm::mat4{ 1.f };
+        vkCmdPushConstants(commandBuffer, m_MeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+
+        vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
     }
 
-    //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 1, 1, &draw.m_Material->m_MaterialSet, 0, nullptr);
-
-    vkCmdBindIndexBuffer(commandBuffer, m_TestMesh.m_IndexBuffer.m_Buffer, 0, VK_INDEX_TYPE_UINT32);
-
-    GPUDrawPushConstants pushConstants;
-    pushConstants.m_VertexBuffer = m_TestMesh.m_VertexBufferAddress;
-    pushConstants.m_WorldMatrix = glm::mat4{ 1.f };
-    vkCmdPushConstants(commandBuffer, m_MeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-
-    //vkCmdDraw(commandBuffer, draw.m_IndexCount, 1, draw.m_FirstIndex, 0, 0);
-    //vkCmdDraw(commandBuffer, 3, 1, 0, 0);
-    vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
-
     vkCmdEndRendering(commandBuffer);
+}
+
+void VulkanRenderer::DrawImGui(VkCommandBuffer commandBuffer, VkImageView targetImageView)
+{
+    VkRenderingAttachmentInfo colorAttachment = VulkanUtils::Render::RenderingAttachmentInfo(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingInfo renderInfo = VulkanUtils::Render::RenderingInfo(m_SwapchainExtent, &colorAttachment, nullptr);
+
+    vkCmdBeginRendering(commandBuffer, &renderInfo);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+    vkCmdEndRendering(commandBuffer);
+}
+
+void VulkanRenderer::UpdateScene()
+{
+    //for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
+    //{
+    //    mesh->Randomize();
+    //    UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+    //}
 }

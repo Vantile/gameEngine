@@ -3,62 +3,15 @@
 #include <array>
 #include <deque>
 #include <functional>
-#include <glm/glm.hpp>
-#include <glm/mat4x4.hpp>
 #include <memory>
 #include <vector>
 #include <vk_mem_alloc.h>
 #include <VulkanDescriptor.h>
+#include <VulkanTypes.h>
 #include <vulkan/vulkan.h>
 
+class Mesh;
 struct SDL_Window;
-
-struct AllocatedImage
-{
-	VkImage m_Image;
-	VkImageView m_ImageView;
-	VmaAllocation m_Allocation;
-	VkExtent3D m_ImageExtent;
-	VkFormat m_ImageFormat;
-};
-
-struct AllocatedBuffer
-{
-	VkBuffer m_Buffer;
-	VmaAllocation m_Allocation;
-	VmaAllocationInfo m_AllocationInfo;
-};
-
-struct ComputePushConstants
-{
-	glm::vec4 m_Data1;
-	glm::vec4 m_Data2;
-	glm::vec4 m_Data3;
-	glm::vec4 m_Data4;
-};
-
-struct GPUDrawPushConstants
-{
-	glm::mat4 m_WorldMatrix;
-	VkDeviceAddress m_VertexBuffer;
-};
-
-struct GPUMeshBuffers
-{
-	AllocatedBuffer m_IndexBuffer;
-	AllocatedBuffer m_VertexBuffer;
-	VkDeviceAddress m_VertexBufferAddress;
-};
-
-struct GPUSceneData
-{
-	glm::mat4 m_View;
-	glm::mat4 m_Proj;
-	glm::mat4 m_Viewproj;
-	glm::vec4 m_AmbientColor;
-	glm::vec4 m_SunlightDirection; // w for sun power
-	glm::vec4 m_SunlightColor;
-};
 
 struct DeletionQueue
 {
@@ -95,7 +48,7 @@ struct FrameData
 
 struct DrawContext
 {
-
+	std::vector<std::shared_ptr<Mesh>> m_DrawMeshes;
 };
 
 class VulkanRenderer
@@ -112,6 +65,7 @@ private:
 	void InitSyncStructures();
 	void InitDescriptors();
 	void InitPipelines();
+	void InitImgui();
 	void InitDefaultData();
 
 	void CreateSwapchain(uint32_t width, uint32_t height);
@@ -124,6 +78,9 @@ private:
 	template <typename V, typename I>
 	void AllocateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress);
 
+	template <typename V, typename I>
+	void UpdateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress);
+
 	void ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function);
 
 	void InitBackgroundPipelines();
@@ -133,6 +90,9 @@ private:
 
 	void DrawBackground(VkCommandBuffer commandBuffer);
 	void DrawGeometry(VkCommandBuffer commandBuffer);
+	void DrawImGui(VkCommandBuffer commandBuffer, VkImageView targetImageView);
+
+	void UpdateScene();
 
 	FrameData& GetCurrentFrame() { return m_Frames[m_FrameNumber % FRAME_OVERLAP]; };
 
@@ -185,7 +145,7 @@ private:
 	VkPipeline m_MeshPipeline;
 	VkPipelineLayout m_MeshPipelineLayout;
 
-	GPUMeshBuffers m_TestMesh;
+	DrawContext m_DrawContext;
 
 	VkExtent2D m_DrawExtent;
 	float m_RenderScale = 1.f;
