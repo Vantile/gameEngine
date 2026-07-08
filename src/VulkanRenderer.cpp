@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <Shader.h>
+#include <Vertex.h>
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
@@ -125,7 +126,7 @@ void VulkanRenderer::Init()
     InitDescriptors();
     InitPipelines();
     //InitImgui();
-    //InitDefaultData();
+    InitDefaultData();
     //InitCamera();
 
     // Everything went fine
@@ -284,12 +285,12 @@ void VulkanRenderer::InitCommands()
         VULKAN_CHECK(vkAllocateCommandBuffers(m_Device, &commandAllocInfo, &m_Frames[i].m_CommandBuffer));
     }
 
-    //VULKAN_CHECK(vkCreateCommandPool(m_Device, &commandPoolInfo, nullptr, &m_ImCommandPool));
-    //VkCommandBufferAllocateInfo imAllocInfo = VulkanUtils::Command::CommandBufferAllocateInfo(m_ImCommandPool, 1);
-    //VULKAN_CHECK(vkAllocateCommandBuffers(m_Device, &imAllocInfo, &m_ImCommandBuffer));
-    //m_MainDeletionQueue.PushFunction([=]() {
-    //    vkDestroyCommandPool(m_Device, m_ImCommandPool, nullptr);
-    //});
+    VULKAN_CHECK(vkCreateCommandPool(m_Device, &commandPoolInfo, nullptr, &m_ImmediateCommandPool));
+    VkCommandBufferAllocateInfo immediateAllocInfo = VulkanUtils::Command::CommandBufferAllocateInfo(m_ImmediateCommandPool, 1);
+    VULKAN_CHECK(vkAllocateCommandBuffers(m_Device, &immediateAllocInfo, &m_ImmediateCommandBuffer));
+    m_MainDeletionQueue.PushFunction([=]() {
+        vkDestroyCommandPool(m_Device, m_ImmediateCommandPool, nullptr);
+    });
 }
 
 void VulkanRenderer::InitSyncStructures()
@@ -303,10 +304,10 @@ void VulkanRenderer::InitSyncStructures()
         VULKAN_CHECK(vkCreateSemaphore(m_Device, &semaphoreCreateInfo, nullptr, &m_Frames[i].m_SwapchainSemaphore));
     }
 
-    //VULKAN_CHECK(vkCreateFence(m_Device, &fenceCreateInfo, nullptr, &m_ImFence));
-    //m_MainDeletionQueue.PushFunction([=]() {
-    //    vkDestroyFence(m_Device, m_ImFence, nullptr);
-    //});
+    VULKAN_CHECK(vkCreateFence(m_Device, &fenceCreateInfo, nullptr, &m_ImmediateFence));
+    m_MainDeletionQueue.PushFunction([=]() {
+        vkDestroyFence(m_Device, m_ImmediateFence, nullptr);
+    });
 }
 
 void VulkanRenderer::InitDescriptors()
@@ -380,6 +381,32 @@ void VulkanRenderer::InitPipelines()
     InitRenderPipeline();
 }
 
+void VulkanRenderer::InitDefaultData()
+{
+    std::array<Vertex, 4> vertices;
+
+    vertices[0].m_Position = { 0.7, -0.5, 0 };
+    vertices[1].m_Position = { 0.5, 0.3, 0 };
+    vertices[2].m_Position = { -0.5, -0.5, 0 };
+    vertices[3].m_Position = { -0.5, 0.5, 0 };
+
+    vertices[0].m_Color = { 0, 0, 0, 1 };
+    vertices[1].m_Color = { 0.5, 0.5, 0.5, 1 };
+    vertices[2].m_Color = { 1, 0, 0, 1 };
+    vertices[3].m_Color = { 0, 1, 0, 1 };
+
+    std::array<uint32_t, 6> indices;
+
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+    indices[3] = 2;
+    indices[4] = 1;
+    indices[5] = 3;
+    
+    AllocateMeshBuffers<Vertex, uint32_t>(vertices, indices, m_TestMesh.m_VertexBuffer, m_TestMesh.m_IndexBuffer, m_TestMesh.m_VertexBufferAddress);
+}
+
 void VulkanRenderer::CreateSwapchain(uint32_t width, uint32_t height)
 {
     vkb::SwapchainBuilder swapchainBuilder{ m_ChosenGPU, m_Device, m_Surface };
@@ -446,6 +473,66 @@ AllocatedBuffer VulkanRenderer::CreateBuffer(size_t allocSize, VkBufferUsageFlag
 void VulkanRenderer::DestroyBuffer(const AllocatedBuffer& buffer)
 {
     vmaDestroyBuffer(m_Allocator, buffer.m_Buffer, buffer.m_Allocation);
+}
+
+template <typename V, typename I>
+void VulkanRenderer::AllocateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress)
+{
+    const size_t vertexBufferSize = vertices.size() * sizeof(V);
+    const size_t indexBufferSize = indices.size() * sizeof(I);
+
+    VkBufferUsageFlags vertexBufferFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+        | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+        | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    vertexBuffer = CreateBuffer(vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    VkBufferUsageFlags indexBufferFlags = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    indexBuffer = CreateBuffer(indexBufferSize, indexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    VkBufferDeviceAddressInfo deviceAddressInfo{};
+    deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    deviceAddressInfo.buffer = vertexBuffer.m_Buffer;
+    vertexBufferAddress = vkGetBufferDeviceAddress(m_Device, &deviceAddressInfo);
+
+    AllocatedBuffer stagingBuffer = CreateBuffer(vertexBufferSize + indexBufferSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* data = stagingBuffer.m_Allocation->GetMappedData();
+    memcpy(data, vertices.data(), vertexBufferSize);
+    memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
+    ImmediateSubmit([&](VkCommandBuffer commandBuffer) {
+        VkBufferCopy vertexCopy{ 0 };
+        vertexCopy.dstOffset = 0;
+        vertexCopy.srcOffset = 0;
+        vertexCopy.size = vertexBufferSize;
+        vkCmdCopyBuffer(commandBuffer, stagingBuffer.m_Buffer, vertexBuffer.m_Buffer, 1, &vertexCopy);
+
+        VkBufferCopy indexCopy{ 0 };
+        indexCopy.dstOffset = 0;
+        indexCopy.srcOffset = vertexBufferSize;
+        indexCopy.size = indexBufferSize;
+        vkCmdCopyBuffer(commandBuffer, stagingBuffer.m_Buffer, indexBuffer.m_Buffer, 1, &indexCopy);
+    });
+
+    DestroyBuffer(stagingBuffer);
+}
+
+void VulkanRenderer::ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function)
+{
+    VULKAN_CHECK(vkResetFences(m_Device, 1, &m_ImmediateFence));
+    VULKAN_CHECK(vkResetCommandBuffer(m_ImmediateCommandBuffer, 0));
+
+    VkCommandBuffer commandBuffer = m_ImmediateCommandBuffer;
+
+    VkCommandBufferBeginInfo cmdBeginInfo = VulkanUtils::Command::CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+    VULKAN_CHECK(vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo));
+    function(commandBuffer);
+    VULKAN_CHECK(vkEndCommandBuffer(commandBuffer));
+
+    VkCommandBufferSubmitInfo cmdInfo = VulkanUtils::Command::CommandBufferSubmitInfo(commandBuffer);
+    VkSubmitInfo2 submit = VulkanUtils::Sync::SubmitInfo(&cmdInfo, nullptr, nullptr);
+
+    VULKAN_CHECK(vkQueueSubmit2(m_GraphicsQueue, 1, &submit, m_ImmediateFence));
+    VULKAN_CHECK(vkWaitForFences(m_Device, 1, &m_ImmediateFence, true, UINT64_MAX));
 }
 
 void VulkanRenderer::InitBackgroundPipelines()
@@ -689,15 +776,16 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
 
     //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 1, 1, &draw.m_Material->m_MaterialSet, 0, nullptr);
 
-    //vkCmdBindIndexBuffer(commandBuffer, draw.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(commandBuffer, m_TestMesh.m_IndexBuffer.m_Buffer, 0, VK_INDEX_TYPE_UINT32);
 
-    //GPUDrawPushConstants pushConstants;
-    //pushConstants.m_VertexBuffer = draw.m_VertexBufferAddress;
-    //pushConstants.m_WorldMatrix = draw.m_Transform;
-    //vkCmdPushConstants(commandBuffer, draw.m_Material->m_Pipeline->m_Layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+    GPUDrawPushConstants pushConstants;
+    pushConstants.m_VertexBuffer = m_TestMesh.m_VertexBufferAddress;
+    pushConstants.m_WorldMatrix = glm::mat4{ 1.f };
+    vkCmdPushConstants(commandBuffer, m_MeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
     //vkCmdDraw(commandBuffer, draw.m_IndexCount, 1, draw.m_FirstIndex, 0, 0);
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    //vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
 
     vkCmdEndRendering(commandBuffer);
 }

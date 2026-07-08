@@ -1,6 +1,6 @@
 add_executable(engine 
   main.cpp
- "VulkanRenderer.h" "VulkanRenderer.cpp" "VulkanUtils.cpp" "VulkanUtils.h" "VulkanDescriptor.cpp" "VulkanDescriptor.h" "Shader.cpp" "Shader.h" "PipelineBuilder.cpp" "PipelineBuilder.h")
+ "VulkanRenderer.h" "VulkanRenderer.cpp" "VulkanUtils.cpp" "VulkanUtils.h" "VulkanDescriptor.cpp" "VulkanDescriptor.h" "Shader.cpp" "Shader.h" "PipelineBuilder.cpp" "PipelineBuilder.h" "IRenderable.h" "Mesh.cpp" "Mesh.h" "Particle.cpp" "Particle.h" "Vertex.h")
 
 set_property(TARGET engine PROPERTY CXX_STANDARD 20)
 target_compile_definitions(engine PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)

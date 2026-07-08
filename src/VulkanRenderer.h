@@ -43,6 +43,13 @@ struct GPUDrawPushConstants
 	VkDeviceAddress m_VertexBuffer;
 };
 
+struct GPUMeshBuffers
+{
+	AllocatedBuffer m_IndexBuffer;
+	AllocatedBuffer m_VertexBuffer;
+	VkDeviceAddress m_VertexBufferAddress;
+};
+
 struct GPUSceneData
 {
 	glm::mat4 m_View;
@@ -86,6 +93,11 @@ struct FrameData
 	DescriptorAllocatorGrowable m_FrameDescriptors;
 };
 
+struct DrawContext
+{
+
+};
+
 class VulkanRenderer
 {
 public:
@@ -100,6 +112,7 @@ private:
 	void InitSyncStructures();
 	void InitDescriptors();
 	void InitPipelines();
+	void InitDefaultData();
 
 	void CreateSwapchain(uint32_t width, uint32_t height);
 	void DestroySwapchain();
@@ -107,6 +120,11 @@ private:
 
 	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	void DestroyBuffer(const AllocatedBuffer& buffer);
+
+	template <typename V, typename I>
+	void AllocateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress);
+
+	void ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function);
 
 	void InitBackgroundPipelines();
 	void InitRenderPipeline();
@@ -139,6 +157,10 @@ private:
 
 	std::array<FrameData, FRAME_OVERLAP> m_Frames;
 
+	VkFence m_ImmediateFence;
+	VkCommandBuffer m_ImmediateCommandBuffer;
+	VkCommandPool m_ImmediateCommandPool;
+
 	AllocatedImage m_DrawImage;
 	VkDescriptorSet m_DrawImageDescriptorSet;
 	VkDescriptorSetLayout m_DrawImageDescriptorLayout;
@@ -162,6 +184,8 @@ private:
 
 	VkPipeline m_MeshPipeline;
 	VkPipelineLayout m_MeshPipelineLayout;
+
+	GPUMeshBuffers m_TestMesh;
 
 	VkExtent2D m_DrawExtent;
 	float m_RenderScale = 1.f;
