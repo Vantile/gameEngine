@@ -4,6 +4,8 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <MeshRenderer.h>
+#include <PointRenderer.h>
 #include <vector>
 #include <vk_mem_alloc.h>
 #include <VulkanDescriptor.h>
@@ -156,11 +158,8 @@ private:
 	VkPipelineLayout m_BackgroundPipelineLayout;
 	ComputePushConstants m_BackgroundData{};
 
-	VkPipeline m_PointPipeline;
-	VkPipelineLayout m_PointPipelineLayout;
-
-	VkPipeline m_MeshPipeline;
-	VkPipelineLayout m_MeshPipelineLayout;
+	PointRenderer m_PointRenderer;
+	MeshRenderer m_MeshRenderer;
 
 	DrawContext m_DrawContext;
 

@@ -29,12 +29,6 @@ struct ComputePushConstants
 	glm::vec4 m_Data4;
 };
 
-struct GPUDrawPushConstants
-{
-	glm::mat4 m_WorldMatrix;
-	VkDeviceAddress m_VertexBuffer;
-};
-
 struct GPUMeshBuffers
 {
 	AllocatedBuffer m_IndexBuffer;

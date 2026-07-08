@@ -715,81 +715,19 @@ void VulkanRenderer::InitBackgroundPipelines()
 
 void VulkanRenderer::InitRenderPipeline()
 {
-    Shader vertexShader(m_Device, "shaders/colored_triangle.vert.spv");
-    Shader fragmentShader(m_Device, "shaders/colored_triangle.frag.spv");
-
-    VkPushConstantRange bufferRange{};
-    bufferRange.offset = 0;
-    bufferRange.size = sizeof(GPUDrawPushConstants);
-    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VulkanUtils::Pipeline::PipelineLayoutCreateInfo();
-    pipelineLayoutCreateInfo.pPushConstantRanges = &bufferRange;
-    pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
-    pipelineLayoutCreateInfo.pSetLayouts = &m_SingleImageDescriptorLayout;
-    pipelineLayoutCreateInfo.setLayoutCount = 1;
-
-    VULKAN_CHECK(vkCreatePipelineLayout(m_Device, &pipelineLayoutCreateInfo, nullptr, &m_MeshPipelineLayout));
-
-    PipelineBuilder builder;
-    builder.m_PipelineLayout = m_MeshPipelineLayout;
-    builder.SetShaders(vertexShader.GetShader(), fragmentShader.GetShader());
-    builder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    builder.SetPolygonMode(VK_POLYGON_MODE_FILL);
-    builder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    builder.SetMultisamplingNone();
-    builder.DisableBlending();
-    //builder.EnableBlendingAdditive();
-    builder.EnableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
-    builder.SetColorAttachmentFormat(m_DrawImage.m_ImageFormat);
-    builder.SetDepthFormat(m_DepthImage.m_ImageFormat);
-
-    m_MeshPipeline = builder.BuildPipeline(m_Device);
+    m_MeshRenderer.InitPipeline(m_Device, m_DrawImage.m_ImageFormat, m_DepthImage.m_ImageFormat, std::vector<VkDescriptorSetLayout>{ m_SingleImageDescriptorLayout });
 
     m_MainDeletionQueue.PushFunction([&]() {
-        vkDestroyPipelineLayout(m_Device, m_MeshPipelineLayout, nullptr);
-        vkDestroyPipeline(m_Device, m_MeshPipeline, nullptr);
+        m_MeshRenderer.DeletePipeline(m_Device);
     });
 }
 
 void VulkanRenderer::InitPointPipeline()
 {
-    Shader vertexShader(m_Device, "shaders/point.vert.spv");
-    Shader fragmentShader(m_Device, "shaders/point.frag.spv");
-
-    VkPushConstantRange bufferRange{};
-    bufferRange.offset = 0;
-    bufferRange.size = sizeof(GPUDrawPushConstants);
-    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VulkanUtils::Pipeline::PipelineLayoutCreateInfo();
-    pipelineLayoutCreateInfo.pPushConstantRanges = &bufferRange;
-    pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
-    pipelineLayoutCreateInfo.pSetLayouts = &m_SingleImageDescriptorLayout;
-    pipelineLayoutCreateInfo.setLayoutCount = 1;
-
-    VULKAN_CHECK(vkCreatePipelineLayout(m_Device, &pipelineLayoutCreateInfo, nullptr, &m_PointPipelineLayout));
-
-    PipelineBuilder builder;
-    builder.m_PipelineLayout = m_PointPipelineLayout;
-    builder.SetShaders(vertexShader.GetShader(), fragmentShader.GetShader());
-    builder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
-    builder.SetPolygonMode(VK_POLYGON_MODE_POINT);
-    builder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    builder.SetMultisamplingNone();
-    builder.DisableBlending();
-    //builder.EnableBlendingAdditive();
-    builder.DisableDepthtest();
-
-    builder.SetColorAttachmentFormat(m_DrawImage.m_ImageFormat);
-    builder.SetDepthFormat(VK_FORMAT_UNDEFINED);
-
-    m_PointPipeline = builder.BuildPipeline(m_Device);
+    m_PointRenderer.InitPipeline(m_Device, m_DrawImage.m_ImageFormat);
 
     m_MainDeletionQueue.PushFunction([&]() {
-        vkDestroyPipelineLayout(m_Device, m_PointPipelineLayout, nullptr);
-        vkDestroyPipeline(m_Device, m_PointPipeline, nullptr);
+        m_PointRenderer.DeletePipeline(m_Device);
     });
 }
 
@@ -929,84 +867,9 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
 
     VkRenderingInfo renderInfo = VulkanUtils::Render::RenderingInfo(m_DrawExtent, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(commandBuffer, &renderInfo);
-
-    //MaterialPipeline* lastPipeline = nullptr;
-    //MaterialInstance* lastMaterial = nullptr;
-    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
-    for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
-    {
-        // Pipeline binding
-        {
-            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipeline);
-            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 0, 1, &gpuSceneDescriptorSet, 0, nullptr);
-
-            VkViewport viewport{};
-            viewport.x = 0;
-            viewport.y = 0;
-            viewport.width = m_DrawExtent.width;
-            viewport.height = m_DrawExtent.height;
-            viewport.minDepth = 0.f;
-            viewport.maxDepth = 1.f;
-            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-            VkRect2D scissor{};
-            scissor.offset.x = 0;
-            scissor.offset.y = 0;
-            scissor.extent.width = m_DrawExtent.width;
-            scissor.extent.height = m_DrawExtent.height;
-            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-        }
-
-        //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 1, 1, &draw.m_Material->m_MaterialSet, 0, nullptr);
-
-        if (mesh->GetIndexBuffer().m_Buffer != lastIndexBuffer)
-        {
-            lastIndexBuffer = mesh->GetIndexBuffer().m_Buffer;
-            vkCmdBindIndexBuffer(commandBuffer, mesh->GetIndexBuffer().m_Buffer, 0, VK_INDEX_TYPE_UINT32);
-        }
-
-        GPUDrawPushConstants pushConstants;
-        pushConstants.m_VertexBuffer = mesh->GetVertexBufferAddress();
-        pushConstants.m_WorldMatrix = glm::mat4{ 1.f };
-        vkCmdPushConstants(commandBuffer, m_MeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-
-        vkCmdDrawIndexed(commandBuffer, mesh->GetIndices().size(), 1, 0, 0, 0);
-    }
-
-    for (std::shared_ptr<RenderPoint> point : m_DrawContext.m_DrawPoints)
-    {
-        // Pipeline binding
-        {
-            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PointPipeline);
-            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PointPipelineLayout, 0, 1, &gpuSceneDescriptorSet, 0, nullptr);
-
-            VkViewport viewport{};
-            viewport.x = 0;
-            viewport.y = 0;
-            viewport.width = m_DrawExtent.width;
-            viewport.height = m_DrawExtent.height;
-            viewport.minDepth = 0.f;
-            viewport.maxDepth = 1.f;
-            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-            VkRect2D scissor{};
-            scissor.offset.x = 0;
-            scissor.offset.y = 0;
-            scissor.extent.width = m_DrawExtent.width;
-            scissor.extent.height = m_DrawExtent.height;
-            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-        }
-
-        //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 1, 1, &draw.m_Material->m_MaterialSet, 0, nullptr);
-
-        GPUDrawPushConstants pushConstants;
-        pushConstants.m_VertexBuffer = point->GetVertexBufferAddress();
-        pushConstants.m_WorldMatrix = glm::mat4{ 1.f };
-        vkCmdPushConstants(commandBuffer, m_PointPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-
-        vkCmdDraw(commandBuffer, 1, 1, 0, 0);
-        //vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
-    }
+    
+    //m_MeshRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawMeshes, std::vector{ gpuSceneDescriptorSet });
+    m_PointRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawPoints);
 
     vkCmdEndRendering(commandBuffer);
 }
