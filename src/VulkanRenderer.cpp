@@ -1,6 +1,7 @@
 #include <VulkanRenderer.h>
 
 #include <assert.h>
+#include <PipelineBuilder.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <Shader.h>
@@ -251,23 +252,23 @@ void VulkanRenderer::InitSwapchain()
     VkImageViewCreateInfo viewInfo = VulkanUtils::Image::ImageViewCreateInfo(m_DrawImage.m_ImageFormat, m_DrawImage.m_Image, VK_IMAGE_ASPECT_COLOR_BIT);
     VULKAN_CHECK(vkCreateImageView(m_Device, &viewInfo, nullptr, &m_DrawImage.m_ImageView));
 
-    //m_DepthImage.m_ImageFormat = VK_FORMAT_D32_SFLOAT;
-    //m_DepthImage.m_ImageExtent = drawImageExtent;
-    //VkImageUsageFlags depthImageUsages{};
-    //depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    m_DepthImage.m_ImageFormat = VK_FORMAT_D32_SFLOAT;
+    m_DepthImage.m_ImageExtent = drawImageExtent;
+    VkImageUsageFlags depthImageUsages{};
+    depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
-    //VkImageCreateInfo depthImageInfo = VulkanUtils::Image::ImageCreateInfo(m_DepthImage.m_ImageFormat, depthImageUsages, drawImageExtent);
-    //vmaCreateImage(m_Allocator, &depthImageInfo, &imageAllocationInfo, &m_DepthImage.m_Image, &m_DepthImage.m_Allocation, nullptr);
+    VkImageCreateInfo depthImageInfo = VulkanUtils::Image::ImageCreateInfo(m_DepthImage.m_ImageFormat, depthImageUsages, drawImageExtent);
+    vmaCreateImage(m_Allocator, &depthImageInfo, &imageAllocationInfo, &m_DepthImage.m_Image, &m_DepthImage.m_Allocation, nullptr);
 
-    //VkImageViewCreateInfo depthViewInfo = VulkanUtils::Image::ImageViewCreateInfo(m_DepthImage.m_ImageFormat, m_DepthImage.m_Image, VK_IMAGE_ASPECT_DEPTH_BIT);
-    //VULKAN_CHECK(vkCreateImageView(m_Device, &depthViewInfo, nullptr, &m_DepthImage.m_ImageView));
+    VkImageViewCreateInfo depthViewInfo = VulkanUtils::Image::ImageViewCreateInfo(m_DepthImage.m_ImageFormat, m_DepthImage.m_Image, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VULKAN_CHECK(vkCreateImageView(m_Device, &depthViewInfo, nullptr, &m_DepthImage.m_ImageView));
 
     m_MainDeletionQueue.PushFunction([=]() {
         vkDestroyImageView(m_Device, m_DrawImage.m_ImageView, nullptr);
         vmaDestroyImage(m_Allocator, m_DrawImage.m_Image, m_DrawImage.m_Allocation);
 
-        //vkDestroyImageView(m_Device, m_DepthImage.m_ImageView, nullptr);
-        //vmaDestroyImage(m_Allocator, m_DepthImage.m_Image, m_DepthImage.m_Allocation);
+        vkDestroyImageView(m_Device, m_DepthImage.m_ImageView, nullptr);
+        vmaDestroyImage(m_Allocator, m_DepthImage.m_Image, m_DepthImage.m_Allocation);
     });
 }
 
@@ -335,11 +336,48 @@ void VulkanRenderer::InitDescriptors()
         m_GlobalDescriptorAllocator.DestroyPools(m_Device);
         vkDestroyDescriptorSetLayout(m_Device, m_DrawImageDescriptorLayout, nullptr);
     });
+
+    for (int i = 0; i < FRAME_OVERLAP; i++)
+    {
+        std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frameSizes =
+        {
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+        };
+
+        m_Frames[i].m_FrameDescriptors = DescriptorAllocatorGrowable{};
+        constexpr uint32_t initialSets = 1000;
+        m_Frames[i].m_FrameDescriptors.Init(m_Device, initialSets, frameSizes);
+
+        m_MainDeletionQueue.PushFunction([&, i]() {
+            m_Frames[i].m_FrameDescriptors.DestroyPools(m_Device);
+        });
+    }
+
+    DescriptorLayoutBuilder gpuSceneDataDescriptorLayoutBuilder;
+    gpuSceneDataDescriptorLayoutBuilder.AddBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    m_GPUSceneDataDescriptorLayout = gpuSceneDataDescriptorLayoutBuilder.Build(m_Device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    m_MainDeletionQueue.PushFunction([&]() {
+        vkDestroyDescriptorSetLayout(m_Device, m_GPUSceneDataDescriptorLayout, nullptr);
+    });
+
+    DescriptorLayoutBuilder singleImageDescriptorLayoutBuilder;
+    singleImageDescriptorLayoutBuilder.AddBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    m_SingleImageDescriptorLayout = singleImageDescriptorLayoutBuilder.Build(m_Device, VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    m_MainDeletionQueue.PushFunction([&]() {
+        vkDestroyDescriptorSetLayout(m_Device, m_SingleImageDescriptorLayout, nullptr);
+    });
 }
 
 void VulkanRenderer::InitPipelines()
 {
     InitBackgroundPipelines();
+
+    InitRenderPipeline();
 }
 
 void VulkanRenderer::CreateSwapchain(uint32_t width, uint32_t height)
@@ -388,6 +426,28 @@ void VulkanRenderer::ResizeSwapchain()
     m_ResizeRequested = false;
 }
 
+AllocatedBuffer VulkanRenderer::CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
+{
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.pNext = nullptr;
+    bufferInfo.size = allocSize;
+    bufferInfo.usage = usage;
+
+    VmaAllocationCreateInfo vmaAllocInfo{};
+    vmaAllocInfo.usage = memoryUsage;
+    vmaAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    AllocatedBuffer newBuffer;
+    VULKAN_CHECK(vmaCreateBuffer(m_Allocator, &bufferInfo, &vmaAllocInfo, &newBuffer.m_Buffer, &newBuffer.m_Allocation, &newBuffer.m_AllocationInfo));
+    return newBuffer;
+}
+
+void VulkanRenderer::DestroyBuffer(const AllocatedBuffer& buffer)
+{
+    vmaDestroyBuffer(m_Allocator, buffer.m_Buffer, buffer.m_Allocation);
+}
+
 void VulkanRenderer::InitBackgroundPipelines()
 {
     VkPipelineLayoutCreateInfo computeLayout{};
@@ -433,6 +493,46 @@ void VulkanRenderer::InitBackgroundPipelines()
     });
 }
 
+void VulkanRenderer::InitRenderPipeline()
+{
+    Shader vertexShader(m_Device, "shaders/colored_triangle.vert.spv");
+    Shader fragmentShader(m_Device, "shaders/colored_triangle.frag.spv");
+
+    VkPushConstantRange bufferRange{};
+    bufferRange.offset = 0;
+    bufferRange.size = sizeof(GPUDrawPushConstants);
+    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VulkanUtils::Pipeline::PipelineLayoutCreateInfo();
+    pipelineLayoutCreateInfo.pPushConstantRanges = &bufferRange;
+    pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+    pipelineLayoutCreateInfo.pSetLayouts = &m_SingleImageDescriptorLayout;
+    pipelineLayoutCreateInfo.setLayoutCount = 1;
+
+    VULKAN_CHECK(vkCreatePipelineLayout(m_Device, &pipelineLayoutCreateInfo, nullptr, &m_MeshPipelineLayout));
+
+    PipelineBuilder builder;
+    builder.m_PipelineLayout = m_MeshPipelineLayout;
+    builder.SetShaders(vertexShader.GetShader(), fragmentShader.GetShader());
+    builder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    builder.SetPolygonMode(VK_POLYGON_MODE_FILL);
+    builder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    builder.SetMultisamplingNone();
+    builder.DisableBlending();
+    //builder.EnableBlendingAdditive();
+    builder.EnableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+
+    builder.SetColorAttachmentFormat(m_DrawImage.m_ImageFormat);
+    builder.SetDepthFormat(m_DepthImage.m_ImageFormat);
+
+    m_MeshPipeline = builder.BuildPipeline(m_Device);
+
+    m_MainDeletionQueue.PushFunction([&]() {
+        vkDestroyPipelineLayout(m_Device, m_MeshPipelineLayout, nullptr);
+        vkDestroyPipeline(m_Device, m_MeshPipeline, nullptr);
+    });
+}
+
 void VulkanRenderer::Draw()
 {
     constexpr uint64_t oneSecondInNanoseconds = 1000000000;
@@ -473,10 +573,15 @@ void VulkanRenderer::Draw()
 
     DrawBackground(commandBuffer);
 
+    VulkanUtils::Image::TransitionImage(commandBuffer, m_DrawImage.m_Image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VulkanUtils::Image::TransitionImage(commandBuffer, m_DepthImage.m_Image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+    DrawGeometry(commandBuffer);
+
     // Make both our draw image and the swap chain image transition to the correct transfer layouts
     VkImage& swapchainImage = m_SwapchainImages[swapchainImageIndex];
     VkImageView& swapchainImageView = m_SwapchainImageViews[swapchainImageIndex];
-    VulkanUtils::Image::TransitionImage(commandBuffer, m_DrawImage.m_Image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VulkanUtils::Image::TransitionImage(commandBuffer, m_DrawImage.m_Image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     VulkanUtils::Image::TransitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     // Copy the draw image into the swapchain
@@ -536,4 +641,63 @@ void VulkanRenderer::DrawBackground(VkCommandBuffer commandBuffer)
     // Execute the compute pipeline dispatch; we are using 16x16 workgroup size so we need to divide by it
     static constexpr uint32_t workgroupSize = 16;
     vkCmdDispatch(commandBuffer, std::ceil(m_DrawExtent.width / workgroupSize), std::ceil(m_DrawExtent.height / workgroupSize), 1);
+}
+
+void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
+{
+    FrameData& currentFrame = GetCurrentFrame();
+    AllocatedBuffer gpuSceneDataBuffer = CreateBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    currentFrame.m_FrameDeletionQueue.PushFunction([=, this]() {
+        DestroyBuffer(gpuSceneDataBuffer);
+    });
+
+    GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.m_Allocation->GetMappedData();
+    *sceneUniformData = m_SceneData;
+
+    VkDescriptorSet gpuSceneDescriptorSet = currentFrame.m_FrameDescriptors.Allocate(m_Device, m_GPUSceneDataDescriptorLayout);
+    DescriptorWriter gpuSceneDescriptorWriter;
+    gpuSceneDescriptorWriter.WriteBuffer(0, gpuSceneDataBuffer.m_Buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    gpuSceneDescriptorWriter.UpdateSet(m_Device, gpuSceneDescriptorSet);
+
+    VkRenderingAttachmentInfo colorAttachment = VulkanUtils::Render::RenderingAttachmentInfo(m_DrawImage.m_ImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo depthAttachment = VulkanUtils::Render::RenderingDepthAttachmentInfo(m_DepthImage.m_ImageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo renderInfo = VulkanUtils::Render::RenderingInfo(m_DrawExtent, &colorAttachment, &depthAttachment);
+    vkCmdBeginRendering(commandBuffer, &renderInfo);
+
+    // Pipeline binding
+    {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 0, 1, &gpuSceneDescriptorSet, 0, nullptr);
+
+        VkViewport viewport{};
+        viewport.x = 0;
+        viewport.y = 0;
+        viewport.width = m_DrawExtent.width;
+        viewport.height = m_DrawExtent.height;
+        viewport.minDepth = 0.f;
+        viewport.maxDepth = 1.f;
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+        VkRect2D scissor{};
+        scissor.offset.x = 0;
+        scissor.offset.y = 0;
+        scissor.extent.width = m_DrawExtent.width;
+        scissor.extent.height = m_DrawExtent.height;
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    }
+
+    //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 1, 1, &draw.m_Material->m_MaterialSet, 0, nullptr);
+
+    //vkCmdBindIndexBuffer(commandBuffer, draw.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+    //GPUDrawPushConstants pushConstants;
+    //pushConstants.m_VertexBuffer = draw.m_VertexBufferAddress;
+    //pushConstants.m_WorldMatrix = draw.m_Transform;
+    //vkCmdPushConstants(commandBuffer, draw.m_Material->m_Pipeline->m_Layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+
+    //vkCmdDraw(commandBuffer, draw.m_IndexCount, 1, draw.m_FirstIndex, 0, 0);
+    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+    vkCmdEndRendering(commandBuffer);
 }

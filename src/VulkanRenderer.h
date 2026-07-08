@@ -4,6 +4,7 @@
 #include <deque>
 #include <functional>
 #include <glm/glm.hpp>
+#include <glm/mat4x4.hpp>
 #include <memory>
 #include <vector>
 #include <vk_mem_alloc.h>
@@ -23,7 +24,9 @@ struct AllocatedImage
 
 struct AllocatedBuffer
 {
-
+	VkBuffer m_Buffer;
+	VmaAllocation m_Allocation;
+	VmaAllocationInfo m_AllocationInfo;
 };
 
 struct ComputePushConstants
@@ -32,6 +35,22 @@ struct ComputePushConstants
 	glm::vec4 m_Data2;
 	glm::vec4 m_Data3;
 	glm::vec4 m_Data4;
+};
+
+struct GPUDrawPushConstants
+{
+	glm::mat4 m_WorldMatrix;
+	VkDeviceAddress m_VertexBuffer;
+};
+
+struct GPUSceneData
+{
+	glm::mat4 m_View;
+	glm::mat4 m_Proj;
+	glm::mat4 m_Viewproj;
+	glm::vec4 m_AmbientColor;
+	glm::vec4 m_SunlightDirection; // w for sun power
+	glm::vec4 m_SunlightColor;
 };
 
 struct DeletionQueue
@@ -64,7 +83,7 @@ struct FrameData
 	VkFence m_RenderFence;
 
 	DeletionQueue m_FrameDeletionQueue;
-	//DescriptorAllocatorGrowable m_FrameDescriptors;
+	DescriptorAllocatorGrowable m_FrameDescriptors;
 };
 
 class VulkanRenderer
@@ -86,11 +105,16 @@ private:
 	void DestroySwapchain();
 	void ResizeSwapchain();
 
+	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	void DestroyBuffer(const AllocatedBuffer& buffer);
+
 	void InitBackgroundPipelines();
+	void InitRenderPipeline();
 
 	void Draw();
 
 	void DrawBackground(VkCommandBuffer commandBuffer);
+	void DrawGeometry(VkCommandBuffer commandBuffer);
 
 	FrameData& GetCurrentFrame() { return m_Frames[m_FrameNumber % FRAME_OVERLAP]; };
 
@@ -119,6 +143,13 @@ private:
 	VkDescriptorSet m_DrawImageDescriptorSet;
 	VkDescriptorSetLayout m_DrawImageDescriptorLayout;
 
+	AllocatedImage m_DepthImage;
+
+	GPUSceneData m_SceneData;
+	VkDescriptorSetLayout m_GPUSceneDataDescriptorLayout;
+
+	VkDescriptorSetLayout m_SingleImageDescriptorLayout;
+
 	VmaAllocator m_Allocator;
 	DescriptorAllocatorGrowable m_GlobalDescriptorAllocator;
 
@@ -128,6 +159,9 @@ private:
 	VkPipeline m_BackgroundPipeline;
 	VkPipelineLayout m_BackgroundPipelineLayout;
 	ComputePushConstants m_BackgroundData{};
+
+	VkPipeline m_MeshPipeline;
+	VkPipelineLayout m_MeshPipelineLayout;
 
 	VkExtent2D m_DrawExtent;
 	float m_RenderScale = 1.f;

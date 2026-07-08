@@ -43,4 +43,17 @@ namespace VulkanUtils
 	{
 		bool LoadShaderModule(const char* filePath, VkDevice device, VkShaderModule* outShaderModule);
 	}
+
+	namespace Render
+	{
+		VkRenderingAttachmentInfo RenderingAttachmentInfo(VkImageView view, VkClearValue* clear, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		VkRenderingAttachmentInfo RenderingDepthAttachmentInfo(VkImageView view, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		VkRenderingInfo RenderingInfo(VkExtent2D renderExtent, VkRenderingAttachmentInfo* colorAttachment, VkRenderingAttachmentInfo* depthAttachment);
+	}
+
+	namespace Pipeline
+	{
+		VkPipelineLayoutCreateInfo PipelineLayoutCreateInfo();
+		VkPipelineShaderStageCreateInfo PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage, VkShaderModule shaderModule, const char* entry = "main");
+	}
 }
