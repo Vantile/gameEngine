@@ -9,6 +9,7 @@
 #include <vector>
 #include <vk_mem_alloc.h>
 #include <VulkanDescriptor.h>
+#include <VulkanMemoryManager.h>
 #include <VulkanTypes.h>
 #include <vulkan/vulkan.h>
 
@@ -148,7 +149,7 @@ private:
 
 	VkDescriptorSetLayout m_SingleImageDescriptorLayout;
 
-	VmaAllocator m_Allocator;
+	VulkanMemoryManager m_MemoryManager;
 	DescriptorAllocatorGrowable m_GlobalDescriptorAllocator;
 
 	VkQueue m_GraphicsQueue;

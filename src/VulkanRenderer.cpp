@@ -197,15 +197,10 @@ void VulkanRenderer::InitVulkan()
     m_GraphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
     m_GraphicsQueueIndex = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 
-    VmaAllocatorCreateInfo allocatorInfo{};
-    allocatorInfo.physicalDevice = m_ChosenGPU;
-    allocatorInfo.device = m_Device;
-    allocatorInfo.instance = m_Instance;
-    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-    vmaCreateAllocator(&allocatorInfo, &m_Allocator);
+    m_MemoryManager.InitAllocator(m_ChosenGPU, m_Device, m_Instance);
 
     m_MainDeletionQueue.PushFunction([&]() {
-        vmaDestroyAllocator(m_Allocator);
+        m_MemoryManager.DestroyAllocator();
     });
 }
 
@@ -236,7 +231,7 @@ void VulkanRenderer::InitSwapchain()
     imageAllocationInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     imageAllocationInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    vmaCreateImage(m_Allocator, &imageInfo, &imageAllocationInfo, &m_DrawImage.m_Image, &m_DrawImage.m_Allocation, nullptr);
+    m_MemoryManager.AllocateImage(&imageInfo, &imageAllocationInfo, &m_DrawImage.m_Image, &m_DrawImage.m_Allocation);
 
     // Build an image-view for the draw image to use for rendering
     VkImageViewCreateInfo viewInfo = VulkanUtils::Image::ImageViewCreateInfo(m_DrawImage.m_ImageFormat, m_DrawImage.m_Image, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -248,17 +243,17 @@ void VulkanRenderer::InitSwapchain()
     depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
     VkImageCreateInfo depthImageInfo = VulkanUtils::Image::ImageCreateInfo(m_DepthImage.m_ImageFormat, depthImageUsages, drawImageExtent);
-    vmaCreateImage(m_Allocator, &depthImageInfo, &imageAllocationInfo, &m_DepthImage.m_Image, &m_DepthImage.m_Allocation, nullptr);
+    m_MemoryManager.AllocateImage(&depthImageInfo, &imageAllocationInfo, &m_DepthImage.m_Image, &m_DepthImage.m_Allocation);
 
     VkImageViewCreateInfo depthViewInfo = VulkanUtils::Image::ImageViewCreateInfo(m_DepthImage.m_ImageFormat, m_DepthImage.m_Image, VK_IMAGE_ASPECT_DEPTH_BIT);
     VULKAN_CHECK(vkCreateImageView(m_Device, &depthViewInfo, nullptr, &m_DepthImage.m_ImageView));
 
     m_MainDeletionQueue.PushFunction([=]() {
         vkDestroyImageView(m_Device, m_DrawImage.m_ImageView, nullptr);
-        vmaDestroyImage(m_Allocator, m_DrawImage.m_Image, m_DrawImage.m_Allocation);
+        m_MemoryManager.DestroyImage(m_DrawImage.m_Image, m_DrawImage.m_Allocation);
 
         vkDestroyImageView(m_Device, m_DepthImage.m_ImageView, nullptr);
-        vmaDestroyImage(m_Allocator, m_DepthImage.m_Image, m_DepthImage.m_Allocation);
+        m_MemoryManager.DestroyImage(m_DepthImage.m_Image, m_DepthImage.m_Allocation);
     });
 }
 
@@ -468,6 +463,12 @@ void VulkanRenderer::InitDefaultData()
 
     m_DrawContext.m_DrawMeshes.push_back(mesh);
 
+    m_MainDeletionQueue.PushFunction([=]() {
+        DestroyBuffer(mesh->GetVertexBuffer());
+        DestroyBuffer(mesh->GetIndexBuffer());
+        m_DrawContext.m_DrawMeshes.clear();
+    });
+
     std::shared_ptr<RenderPoint> point1 = std::make_shared<RenderPoint>();
     std::shared_ptr<RenderPoint> point2 = std::make_shared<RenderPoint>();
     std::shared_ptr<RenderPoint> point3 = std::make_shared<RenderPoint>();
@@ -492,6 +493,14 @@ void VulkanRenderer::InitDefaultData()
     m_DrawContext.m_DrawPoints.push_back(point2);
     m_DrawContext.m_DrawPoints.push_back(point3);
     m_DrawContext.m_DrawPoints.push_back(point4);
+
+    m_MainDeletionQueue.PushFunction([=]() {
+        DestroyBuffer(point1->GetVertexBuffer());
+        DestroyBuffer(point2->GetVertexBuffer());
+        DestroyBuffer(point3->GetVertexBuffer());
+        DestroyBuffer(point4->GetVertexBuffer());
+        m_DrawContext.m_DrawPoints.clear();
+    });
 }
 
 void VulkanRenderer::CreateSwapchain(uint32_t width, uint32_t height)
@@ -553,13 +562,13 @@ AllocatedBuffer VulkanRenderer::CreateBuffer(size_t allocSize, VkBufferUsageFlag
     vmaAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
     AllocatedBuffer newBuffer;
-    VULKAN_CHECK(vmaCreateBuffer(m_Allocator, &bufferInfo, &vmaAllocInfo, &newBuffer.m_Buffer, &newBuffer.m_Allocation, &newBuffer.m_AllocationInfo));
+    m_MemoryManager.AllocateBuffer(&bufferInfo, &vmaAllocInfo, &newBuffer.m_Buffer, &newBuffer.m_Allocation, &newBuffer.m_AllocationInfo);
     return newBuffer;
 }
 
 void VulkanRenderer::DestroyBuffer(const AllocatedBuffer& buffer)
 {
-    vmaDestroyBuffer(m_Allocator, buffer.m_Buffer, buffer.m_Allocation);
+    m_MemoryManager.DestroyBuffer(buffer.m_Buffer, buffer.m_Allocation);
 }
 
 template <typename V>
@@ -868,7 +877,7 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
     VkRenderingInfo renderInfo = VulkanUtils::Render::RenderingInfo(m_DrawExtent, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(commandBuffer, &renderInfo);
     
-    //m_MeshRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawMeshes, std::vector{ gpuSceneDescriptorSet });
+    m_MeshRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawMeshes, std::vector{ gpuSceneDescriptorSet });
     m_PointRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawPoints);
 
     vkCmdEndRendering(commandBuffer);
