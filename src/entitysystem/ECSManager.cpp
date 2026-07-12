@@ -30,11 +30,11 @@ void ECSManager::Init()
 	m_Registry->Emplace(entity3, renderable);
 }
 
-void ECSManager::Run()
+void ECSManager::Run(FrameData& frameData)
 {
 	for (std::unique_ptr<System>& system : m_Systems)
 	{
-		system->Update(*m_Registry.get());
+		system->Update(*m_Registry.get(), frameData);
 	}
 }
 

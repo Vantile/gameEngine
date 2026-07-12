@@ -2,6 +2,7 @@
 
 #include <array>
 #include <deque>
+#include <engine/FrameData.h>
 #include <functional>
 #include <memory>
 #include <renderer/MeshRenderer.h>
@@ -38,7 +39,7 @@ struct DeletionQueue
 	}
 };
 
-struct FrameData
+struct VulkanFrameData
 {
 	VkCommandPool m_CommandPool;
 	VkCommandBuffer m_CommandBuffer;
@@ -60,13 +61,16 @@ struct DrawContext
 {
 	std::vector<std::shared_ptr<RenderPoint>> m_DrawPoints;
 	std::vector<std::shared_ptr<Mesh>> m_DrawMeshes;
+
+	std::vector<std::shared_ptr<RenderPoint>> m_EngineDrawPoints;
+	std::vector<std::shared_ptr<Mesh>> m_EngineDrawMeshes;
 };
 
 class VulkanRenderer
 {
 public:
 	void Init();
-	void Run();
+	void Run(FrameData& frameData);
 	void ProcessSDLEvent(SDL_Event& e);
 	void Cleanup();
 
@@ -105,15 +109,15 @@ private:
 	void InitRenderPipeline();
 	void InitPointPipeline();
 
-	void Draw();
+	void Draw(FrameData& frameData);
 
 	void DrawBackground(VkCommandBuffer commandBuffer);
 	void DrawGeometry(VkCommandBuffer commandBuffer);
 	void DrawImGui(VkCommandBuffer commandBuffer, VkImageView targetImageView);
 
-	void UpdateScene();
+	void UpdateScene(FrameData& frameData);
 
-	FrameData& GetCurrentFrame() { return m_Frames[m_FrameNumber % FRAME_OVERLAP]; };
+	VulkanFrameData& GetCurrentFrame() { return m_Frames[m_FrameNumber % FRAME_OVERLAP]; };
 
 private:
 	static constexpr uint32_t WINDOW_WIDTH = 1200;
@@ -134,7 +138,7 @@ private:
 	std::vector<VkImage> m_SwapchainImages;
 	std::vector<VkImageView> m_SwapchainImageViews;
 
-	std::array<FrameData, FRAME_OVERLAP> m_Frames;
+	std::array<VulkanFrameData, FRAME_OVERLAP> m_Frames;
 
 	VkFence m_ImmediateFence;
 	VkCommandBuffer m_ImmediateCommandBuffer;

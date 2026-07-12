@@ -11,7 +11,7 @@ class ECSManager
 {
 public:
 	void Init();
-	void Run();
+	void Run(FrameData& frameData);
 	void Cleanup();
 
 private:

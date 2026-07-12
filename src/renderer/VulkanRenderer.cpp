@@ -14,7 +14,7 @@
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
-void VulkanRenderer::Run()
+void VulkanRenderer::Run(FrameData& frameData)
 {
     if (m_ResizeRequested)
     {
@@ -40,7 +40,7 @@ void VulkanRenderer::Run()
 
     ImGui::Render();
 
-    Draw();
+    Draw(frameData);
 }
 
 void VulkanRenderer::ProcessSDLEvent(SDL_Event& e)
@@ -700,12 +700,12 @@ void VulkanRenderer::InitPointPipeline()
     });
 }
 
-void VulkanRenderer::Draw()
+void VulkanRenderer::Draw(FrameData& frameData)
 {
-    UpdateScene();
+    UpdateScene(frameData);
 
     constexpr uint64_t oneSecondInNanoseconds = 1000000000;
-    FrameData& currentFrame = GetCurrentFrame();
+    VulkanFrameData& currentFrame = GetCurrentFrame();
 
     // Wait for the previous frame to finish rendering
     VULKAN_CHECK(vkWaitForFences(m_Device, 1, &currentFrame.m_RenderFence, true, oneSecondInNanoseconds));
@@ -817,7 +817,7 @@ void VulkanRenderer::DrawBackground(VkCommandBuffer commandBuffer)
 
 void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
 {
-    FrameData& currentFrame = GetCurrentFrame();
+    VulkanFrameData& currentFrame = GetCurrentFrame();
     AllocatedBuffer gpuSceneDataBuffer = CreateBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
     currentFrame.m_FrameDeletionQueue.PushFunction([=, this]() {
         DestroyBuffer(gpuSceneDataBuffer);
@@ -839,6 +839,7 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
     
     m_MeshRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawMeshes, std::vector{ gpuSceneDescriptorSet });
     m_PointRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawPoints);
+    m_PointRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_EngineDrawPoints);
 
     vkCmdEndRendering(commandBuffer);
 }
@@ -853,11 +854,21 @@ void VulkanRenderer::DrawImGui(VkCommandBuffer commandBuffer, VkImageView target
     vkCmdEndRendering(commandBuffer);
 }
 
-void VulkanRenderer::UpdateScene()
+void VulkanRenderer::UpdateScene(FrameData& frameData)
 {
-    //for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
-    //{
-    //    mesh->Randomize();
-    //    UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
-    //}
+    for (RenderObject& object : frameData.renderObjects)
+    {
+        std::shared_ptr<RenderPoint> point1 = std::make_shared<RenderPoint>();
+
+        point1->GetVertex().m_Position = object.position;
+        point1->GetVertex().m_Color = { 1, 0, 0, 1 };
+
+        AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point1->GetVertex(), 1 }, point1->GetVertexBuffer(), point1->GetVertexBufferAddress());
+
+        m_DrawContext.m_EngineDrawPoints.push_back(point1);
+
+        m_MainDeletionQueue.PushFunction([=]() {
+            DestroyBuffer(point1->GetVertexBuffer());
+        });
+    }
 }
