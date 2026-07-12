@@ -1,7 +1,7 @@
-#include <VulkanDescriptor.h>
+#include <renderer/VulkanDescriptor.h>
 
 #include <print>
-#include <VulkanUtils.h>
+#include <renderer/VulkanUtils.h>
 
 void DescriptorAllocatorGrowable::Init(VkDevice device, uint32_t initialSets, std::span<PoolSizeRatio> poolRatios)
 {

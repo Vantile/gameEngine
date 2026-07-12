@@ -1,9 +1,9 @@
-#include <PointRenderer.h>
+#include <renderer/PointRenderer.h>
 
-#include <PipelineBuilder.h>
-#include <RenderPoint.h>
-#include <Shader.h>
-#include <VulkanUtils.h>
+#include <renderer/PipelineBuilder.h>
+#include <renderer/RenderPoint.h>
+#include <renderer/Shader.h>
+#include <renderer/VulkanUtils.h>
 
 void PointRenderer::InitPipeline(VkDevice device, VkFormat drawImageFormat, VkFormat depthImageFormat)
 {

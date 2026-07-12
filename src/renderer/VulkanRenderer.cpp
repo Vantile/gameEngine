@@ -1,91 +1,51 @@
-#include <VulkanRenderer.h>
+#include <renderer/VulkanRenderer.h>
 
 #include <assert.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
-#include <Mesh.h>
-#include <PipelineBuilder.h>
-#include <RenderPoint.h>
-#include <SDL3/SDL.h>
+#include <renderer/Mesh.h>
+#include <renderer/PipelineBuilder.h>
+#include <renderer/RenderPoint.h>
+#include <renderer/Shader.h>
+#include <renderer/Vertex.h>
+#include <renderer/VulkanUtils.h>
 #include <SDL3/SDL_vulkan.h>
-#include <Shader.h>
-#include <Vertex.h>
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
-#include <VulkanUtils.h>
 
 void VulkanRenderer::Run()
 {
-    SDL_Event e;
-    bool bQuit = false;
-
-    // main loop
-    while (!bQuit)
+    if (m_ResizeRequested)
     {
-        //auto start = std::chrono::system_clock::now();
-        // Handle events on queue
-        while (SDL_PollEvent(&e) != 0)
+        ResizeSwapchain();
+    }
+
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    if (ImGui::Begin("Randomize"))
+    {
+        if (ImGui::Button("Randomize"))
         {
-            // close the window when user alt-f4s or clicks the X button
-            if (e.type == SDL_EVENT_QUIT)
-                bQuit = true;
-
-            //if (e.type == SDL_WINDOWEVENT)
-            //{
-            //    if (e.window.event == SDL_WINDOWEVENT_MINIMIZED)
-            //    {
-            //        //m_StopRendering = true;
-            //    }
-
-            //    if (e.window.event == SDL_WINDOWEVENT_RESTORED)
-            //    {
-            //        //m_StopRendering = false;
-            //    }
-            //}
-
-            //m_MainCamera.ProcessSDLEvent(e);
-            ImGui_ImplSDL3_ProcessEvent(&e);
-        }
-
-        // do not draw if we are minimized
-        //if (m_StopRendering)
-        //{
-        //    // throttle the speed to avoid the endless spinning
-        //    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        //    continue;
-        //}
-
-        if (m_ResizeRequested)
-        {
-            ResizeSwapchain();
-        }
-
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplSDL3_NewFrame();
-        ImGui::NewFrame();
-
-        if (ImGui::Begin("Randomize"))
-        {
-            if (ImGui::Button("Randomize"))
+            for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
             {
-                for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
-                {
-                    mesh->Randomize();
-                    UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
-                }
+                mesh->Randomize();
+                UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
             }
         }
-        ImGui::End();
-
-        ImGui::Render();
-
-        Draw();
-
-        //auto end = std::chrono::system_clock::now();
-        //auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        //m_Stats.m_FrameTime = elapsed.count() / 1000.f;
     }
+    ImGui::End();
+
+    ImGui::Render();
+
+    Draw();
+}
+
+void VulkanRenderer::ProcessSDLEvent(SDL_Event& e)
+{
+    ImGui_ImplSDL3_ProcessEvent(&e);
 }
 
 void VulkanRenderer::Init()

@@ -1,0 +1,1 @@
+#include <entitysystem/component/Component.h>

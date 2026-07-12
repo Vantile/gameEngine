@@ -1,9 +1,9 @@
 #pragma once
 
-#include <IRenderable.h>
+#include <renderer/IRenderable.h>
+#include <renderer/Vertex.h>
+#include <renderer/VulkanTypes.h>
 #include <vector>
-#include <Vertex.h>
-#include <VulkanTypes.h>
 
 class Mesh : public IRenderable
 {

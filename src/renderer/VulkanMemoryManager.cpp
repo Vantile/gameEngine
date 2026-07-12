@@ -1,6 +1,6 @@
-#include <VulkanMemoryManager.h>
+#include <renderer/VulkanMemoryManager.h>
 
-#include <VulkanUtils.h>
+#include <renderer/VulkanUtils.h>
 
 void VulkanMemoryManager::InitAllocator(const VkPhysicalDevice& chosenGPU, const VkDevice& device, const VkInstance& instance)
 {

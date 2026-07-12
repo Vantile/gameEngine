@@ -4,13 +4,14 @@
 #include <deque>
 #include <functional>
 #include <memory>
-#include <MeshRenderer.h>
-#include <PointRenderer.h>
+#include <renderer/MeshRenderer.h>
+#include <renderer/PointRenderer.h>
+#include <renderer/VulkanDescriptor.h>
+#include <renderer/VulkanMemoryManager.h>
+#include <renderer/VulkanTypes.h>
+#include <SDL3/SDL.h>
 #include <vector>
 #include <vk_mem_alloc.h>
-#include <VulkanDescriptor.h>
-#include <VulkanMemoryManager.h>
-#include <VulkanTypes.h>
 #include <vulkan/vulkan.h>
 
 class Mesh;
@@ -66,6 +67,7 @@ class VulkanRenderer
 public:
 	void Init();
 	void Run();
+	void ProcessSDLEvent(SDL_Event& e);
 	void Cleanup();
 
 private:

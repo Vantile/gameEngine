@@ -1,6 +1,6 @@
-#include <Shader.h>
+#include <renderer/Shader.h>
 
-#include <VulkanUtils.h>
+#include <renderer/VulkanUtils.h>
 
 Shader::Shader(VkDevice device, std::string_view filePath)
 {

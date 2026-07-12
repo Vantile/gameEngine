@@ -1,8 +1,8 @@
 #pragma once
 
-#include <IRenderable.h>
-#include <Vertex.h>
-#include <VulkanTypes.h>
+#include <renderer/IRenderable.h>
+#include <renderer/Vertex.h>
+#include <renderer/VulkanTypes.h>
 
 class RenderPoint : public IRenderable
 {

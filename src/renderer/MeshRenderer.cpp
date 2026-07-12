@@ -1,9 +1,9 @@
-#include <MeshRenderer.h>
+#include <renderer/MeshRenderer.h>
 
-#include <Mesh.h>
-#include <PipelineBuilder.h>
-#include <Shader.h>
-#include <VulkanUtils.h>
+#include <renderer/Mesh.h>
+#include <renderer/PipelineBuilder.h>
+#include <renderer/Shader.h>
+#include <renderer/VulkanUtils.h>
 
 void MeshRenderer::InitPipeline(VkDevice device, VkFormat drawImageFormat, VkFormat depthImageFormat, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts)
 {

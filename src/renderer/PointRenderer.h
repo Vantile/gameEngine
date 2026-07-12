@@ -1,8 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <renderer/Vertex.h>
 #include <vector>
-#include <Vertex.h>
 #include <vulkan/vulkan.h>
 
 class RenderPoint;
