@@ -1,6 +1,8 @@
 #include <engine/Engine.h>
 
 #include <SDL3/SDL.h>
+#define TRACY_ENABLE
+#include <tracy/Tracy.hpp>
 
 void Engine::Init()
 {
@@ -37,6 +39,8 @@ void Engine::Run()
         m_FrameData.Reset();
         m_ECSManager->Run(m_FrameData);
         m_Renderer->Run(m_FrameData);
+
+        FrameMark;
     }
 }
 

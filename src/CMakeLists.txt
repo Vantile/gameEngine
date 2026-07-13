@@ -7,4 +7,4 @@ target_compile_definitions(engine PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)
 target_include_directories(engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/third_party/imgui/**.h")
 
 #target_link_libraries(engine PUBLIC vma glm Vulkan::Vulkan fmt::fmt stb_image SDL2::SDL2 vkbootstrap imgui fastgltf::fastgltf)
-target_link_libraries(engine PUBLIC glm::glm-header-only imgui SDL3::SDL3 vk-bootstrap::vk-bootstrap Vulkan::Vulkan VulkanMemoryAllocator)
+target_link_libraries(engine PUBLIC glm::glm-header-only imgui SDL3::SDL3 Tracy::TracyClient vk-bootstrap::vk-bootstrap Vulkan::Vulkan VulkanMemoryAllocator)

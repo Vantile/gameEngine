@@ -4,6 +4,7 @@
 #include <renderer/PipelineBuilder.h>
 #include <renderer/Shader.h>
 #include <renderer/VulkanUtils.h>
+#include <tracy/Tracy.hpp>
 
 void MeshRenderer::InitPipeline(VkDevice device, VkFormat drawImageFormat, VkFormat depthImageFormat, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts)
 {
@@ -48,6 +49,8 @@ void MeshRenderer::DeletePipeline(VkDevice device)
 
 void MeshRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<std::shared_ptr<Mesh>>& meshes, const std::vector<VkDescriptorSet>& descriptorSets)
 {
+    ZoneScoped;
+
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipeline);
 
     // TODO: This assumes that there is one set per layout; I need to create a class to better encapsulate descriptor sets and layouts
@@ -78,6 +81,8 @@ void MeshRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, co
     VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
     for (std::shared_ptr<Mesh> mesh : meshes)
     {
+        ZoneScopedN("MeshRenderer::Draw MeshDraw")
+
         //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshPipelineLayout, 1, 1, &draw.m_Material->m_MaterialSet, 0, nullptr);
 
         if (mesh->GetIndexBuffer().m_Buffer != lastIndexBuffer)

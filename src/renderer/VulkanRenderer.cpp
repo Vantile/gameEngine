@@ -1,6 +1,8 @@
 #include <renderer/VulkanRenderer.h>
 
-#include <assert.h>
+#include <algorithm>
+#include <cassert>
+#include <execution>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
 #include <renderer/Mesh.h>
@@ -10,35 +12,42 @@
 #include <renderer/Vertex.h>
 #include <renderer/VulkanUtils.h>
 #include <SDL3/SDL_vulkan.h>
+#include <tracy/Tracy.hpp>
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
 void VulkanRenderer::Run(FrameData& frameData)
 {
+    ZoneScoped;
+
     if (m_ResizeRequested)
     {
         ResizeSwapchain();
     }
 
-    ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplSDL3_NewFrame();
-    ImGui::NewFrame();
-
-    if (ImGui::Begin("Randomize"))
     {
-        if (ImGui::Button("Randomize"))
+        ZoneScopedN("ImGUI NewFrame")
+
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+
+        if (ImGui::Begin("Randomize"))
         {
-            //for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
+            if (ImGui::Button("Randomize"))
             {
-                //mesh->Randomize();
-                //UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+                //for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
+                {
+                    //mesh->Randomize();
+                    //UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+                }
             }
         }
-    }
-    ImGui::End();
+        ImGui::End();
 
-    ImGui::Render();
+        ImGui::Render();
+    }
 
     Draw(frameData);
 }
@@ -465,6 +474,8 @@ void VulkanRenderer::DestroyBuffer(const AllocatedBuffer& buffer)
 template <typename V>
 void VulkanRenderer::AllocatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress)
 {
+    ZoneScoped;
+
     const size_t vertexBufferSize = vertices.size() * sizeof(V);
 
     VkBufferUsageFlags vertexBufferFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
@@ -483,6 +494,8 @@ void VulkanRenderer::AllocatePointBuffers(const std::span<V>& vertices, Allocate
 template <typename V, typename I>
 void VulkanRenderer::AllocateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress)
 {
+    ZoneScoped;
+
     const size_t vertexBufferSize = vertices.size() * sizeof(V);
     const size_t indexBufferSize = indices.size() * sizeof(I);
 
@@ -505,6 +518,8 @@ void VulkanRenderer::AllocateMeshBuffers(const std::span<V>& vertices, const std
 template <typename V>
 void VulkanRenderer::UpdatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress)
 {
+    ZoneScoped;
+
     const size_t vertexBufferSize = vertices.size() * sizeof(V);
 
     AllocatedBuffer stagingBuffer = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -524,6 +539,8 @@ void VulkanRenderer::UpdatePointBuffers(const std::span<V>& vertices, AllocatedB
 template <typename V, typename I>
 void VulkanRenderer::UpdateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress)
 {
+    ZoneScoped;
+
     const size_t vertexBufferSize = vertices.size() * sizeof(V);
     const size_t indexBufferSize = indices.size() * sizeof(I);
 
@@ -633,6 +650,7 @@ void VulkanRenderer::InitPointPipeline()
 
 void VulkanRenderer::Draw(FrameData& frameData)
 {
+    ZoneScoped;
     UpdateScene(frameData);
 
     constexpr uint64_t oneSecondInNanoseconds = 1000000000;
@@ -733,6 +751,8 @@ void VulkanRenderer::Draw(FrameData& frameData)
 
 void VulkanRenderer::DrawBackground(VkCommandBuffer commandBuffer)
 {
+    ZoneScoped;
+
     // Bind the gradient drawing compute pipeline
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_BackgroundPipeline);
 
@@ -748,6 +768,8 @@ void VulkanRenderer::DrawBackground(VkCommandBuffer commandBuffer)
 
 void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
 {
+    ZoneScoped;
+
     VulkanFrameData& currentFrame = GetCurrentFrame();
     AllocatedBuffer gpuSceneDataBuffer = CreateBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
     currentFrame.m_FrameDeletionQueue.PushFunction([=, this]() {
@@ -786,10 +808,14 @@ void VulkanRenderer::DrawImGui(VkCommandBuffer commandBuffer, VkImageView target
 
 void VulkanRenderer::UpdateScene(FrameData& frameData)
 {
+    ZoneScoped;
+
     for (RenderObject& object : frameData.renderObjects)
     {
         if (object.point)
         {
+            ZoneScopedN("VulkanRenderer::UpdateScene UpdateObject Point");
+
             assert(object.vertices.size() == 1);
             std::shared_ptr<RenderPoint> point;
             if (m_DrawContext.m_EnginePoints.contains(object.entityID))
@@ -815,6 +841,8 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
         }
         else
         {
+            ZoneScopedN("VulkanRenderer::UpdateScene UpdateObject Mesh");
+
             std::shared_ptr<Mesh> mesh;
             if (m_DrawContext.m_EngineMeshes.contains(object.entityID))
             {

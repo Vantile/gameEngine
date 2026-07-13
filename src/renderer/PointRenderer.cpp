@@ -4,6 +4,7 @@
 #include <renderer/RenderPoint.h>
 #include <renderer/Shader.h>
 #include <renderer/VulkanUtils.h>
+#include <tracy/Tracy.hpp>
 
 void PointRenderer::InitPipeline(VkDevice device, VkFormat drawImageFormat, VkFormat depthImageFormat)
 {
@@ -46,6 +47,8 @@ void PointRenderer::DeletePipeline(VkDevice device)
 
 void PointRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<std::shared_ptr<RenderPoint>>& points)
 {
+    ZoneScoped;
+
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PointPipeline);
 
     uint32_t width = drawExtent.width;
@@ -69,6 +72,8 @@ void PointRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, c
 
     for (std::shared_ptr<RenderPoint> point : points)
     {
+        ZoneScopedN("PointRenderer::Draw PointDraw");
+
         PushConstants pushConstants;
         pushConstants.m_Vertex = point->GetVertex();
         vkCmdPushConstants(commandBuffer, m_PointPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);

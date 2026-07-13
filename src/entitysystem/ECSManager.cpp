@@ -3,6 +3,7 @@
 #include <entitysystem/EntityRegistry.h>
 #include <entitysystem/system/MovementSystem.h>
 #include <entitysystem/system/RenderSystem.h>
+#include <tracy/Tracy.hpp>
 
 void ECSManager::Init()
 {
@@ -65,6 +66,7 @@ void ECSManager::Init()
 
 void ECSManager::Run(FrameData& frameData)
 {
+	ZoneScoped;
 	for (std::unique_ptr<System>& system : m_Systems)
 	{
 		system->Update(*m_Registry.get(), frameData);
