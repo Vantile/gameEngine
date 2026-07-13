@@ -59,11 +59,11 @@ struct WorldContext
 
 struct DrawContext
 {
-	std::vector<std::shared_ptr<RenderPoint>> m_DrawPoints;
-	std::vector<std::shared_ptr<Mesh>> m_DrawMeshes;
+	std::vector<std::shared_ptr<RenderPoint>> m_EntityDrawPoints;
+	std::vector<std::shared_ptr<Mesh>> m_EntityDrawMeshes;
 
-	std::vector<std::shared_ptr<RenderPoint>> m_EngineDrawPoints;
-	std::vector<std::shared_ptr<Mesh>> m_EngineDrawMeshes;
+	std::unordered_map<EntityID, std::shared_ptr<RenderPoint>> m_EnginePoints;
+	std::unordered_map<EntityID, std::shared_ptr<Mesh>> m_EngineMeshes;
 };
 
 class VulkanRenderer

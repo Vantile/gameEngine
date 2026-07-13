@@ -1,11 +1,16 @@
 #pragma once
 
+#include <entitysystem/Entity.h>
 #include <glm/vec3.hpp>
+#include <renderer/Vertex.h>
+#include <vector>
 
 struct RenderObject
 {
 	bool point{ false };
-	glm::vec3 position{ 0.f, 0.f, 0.f };
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+	EntityID entityID;
 };
 
 struct FrameData

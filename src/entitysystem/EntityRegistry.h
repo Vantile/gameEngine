@@ -14,7 +14,7 @@ public:
 	void DestroyEntity(EntityID entity) { m_EntityPool.Destroy(entity); }
 
 	template<typename T>
-	void Emplace(EntityID entity, T component) { GetPool<T>().Insert(entity, std::move(component)); }
+	void Emplace(EntityID entity, T component) { component.SetOwner(entity); GetPool<T>().Insert(entity, std::move(component)); }
 
 	template<typename T>
 	void Remove(EntityID entity) { GetPool<T>().Remove(entity); }

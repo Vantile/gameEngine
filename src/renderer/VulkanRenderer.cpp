@@ -29,10 +29,10 @@ void VulkanRenderer::Run(FrameData& frameData)
     {
         if (ImGui::Button("Randomize"))
         {
-            for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
+            //for (std::shared_ptr<Mesh> mesh : m_DrawContext.m_DrawMeshes)
             {
-                mesh->Randomize();
-                UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+                //mesh->Randomize();
+                //UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
             }
         }
     }
@@ -391,76 +391,7 @@ void VulkanRenderer::InitImgui()
 
 void VulkanRenderer::InitDefaultData()
 {
-    std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
 
-    std::vector<Vertex> vertices;
-    vertices.resize(4);
-
-    vertices[0].m_Position = { 0.7, -0.5, 0 };
-    vertices[1].m_Position = { 0.5, 0.3, 0 };
-    vertices[2].m_Position = { -0.5, -0.5, 0 };
-    vertices[3].m_Position = { -0.5, 0.5, 0 };
-
-    vertices[0].m_Color = { 0, 0, 0, 1 };
-    vertices[1].m_Color = { 0.5, 0.5, 0.5, 1 };
-    vertices[2].m_Color = { 1, 0, 0, 1 };
-    vertices[3].m_Color = { 0, 1, 0, 1 };
-
-    std::vector<uint32_t> indices;
-    indices.resize(6);
-
-    indices[0] = 0;
-    indices[1] = 1;
-    indices[2] = 2;
-    indices[3] = 2;
-    indices[4] = 1;
-    indices[5] = 3;
-
-    mesh->GetVertices() = std::move(vertices);
-    mesh->GetIndices() = std::move(indices);
-    
-    AllocateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
-
-    m_DrawContext.m_DrawMeshes.push_back(mesh);
-
-    m_MainDeletionQueue.PushFunction([=]() {
-        DestroyBuffer(mesh->GetVertexBuffer());
-        DestroyBuffer(mesh->GetIndexBuffer());
-        m_DrawContext.m_DrawMeshes.clear();
-    });
-
-    std::shared_ptr<RenderPoint> point1 = std::make_shared<RenderPoint>();
-    std::shared_ptr<RenderPoint> point2 = std::make_shared<RenderPoint>();
-    std::shared_ptr<RenderPoint> point3 = std::make_shared<RenderPoint>();
-    std::shared_ptr<RenderPoint> point4 = std::make_shared<RenderPoint>();
-
-    point1->GetVertex().m_Position = { 0.5, 0.5, 0 };
-    point2->GetVertex().m_Position = { -0.5, 0.5, 0 };
-    point3->GetVertex().m_Position = { 0.5, -0.5, 0 };
-    point4->GetVertex().m_Position = { -0.5, -0.5, 0 };
-
-    point1->GetVertex().m_Color = { 0, 0, 0, 1 };
-    point2->GetVertex().m_Color = { 0.5, 0.5, 0.5, 1 };
-    point3->GetVertex().m_Color = { 1, 0, 0, 1 };
-    point4->GetVertex().m_Color = { 0, 1, 0, 1 };
-
-    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point1->GetVertex(), 1 }, point1->GetVertexBuffer(), point1->GetVertexBufferAddress());
-    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point2->GetVertex(), 1 }, point2->GetVertexBuffer(), point2->GetVertexBufferAddress());
-    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point3->GetVertex(), 1 }, point3->GetVertexBuffer(), point3->GetVertexBufferAddress());
-    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point4->GetVertex(), 1 }, point4->GetVertexBuffer(), point4->GetVertexBufferAddress());
-
-    m_DrawContext.m_DrawPoints.push_back(point1);
-    m_DrawContext.m_DrawPoints.push_back(point2);
-    m_DrawContext.m_DrawPoints.push_back(point3);
-    m_DrawContext.m_DrawPoints.push_back(point4);
-
-    m_MainDeletionQueue.PushFunction([=]() {
-        DestroyBuffer(point1->GetVertexBuffer());
-        DestroyBuffer(point2->GetVertexBuffer());
-        DestroyBuffer(point3->GetVertexBuffer());
-        DestroyBuffer(point4->GetVertexBuffer());
-        m_DrawContext.m_DrawPoints.clear();
-    });
 }
 
 void VulkanRenderer::CreateSwapchain(uint32_t width, uint32_t height)
@@ -837,9 +768,8 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
     VkRenderingInfo renderInfo = VulkanUtils::Render::RenderingInfo(m_DrawExtent, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(commandBuffer, &renderInfo);
     
-    m_MeshRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawMeshes, std::vector{ gpuSceneDescriptorSet });
-    m_PointRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_DrawPoints);
-    m_PointRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_EngineDrawPoints);
+    m_MeshRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_EntityDrawMeshes, std::vector{ gpuSceneDescriptorSet });
+    m_PointRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_EntityDrawPoints);
 
     vkCmdEndRendering(commandBuffer);
 }
@@ -858,17 +788,69 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
 {
     for (RenderObject& object : frameData.renderObjects)
     {
-        std::shared_ptr<RenderPoint> point1 = std::make_shared<RenderPoint>();
+        if (object.point)
+        {
+            assert(object.vertices.size() == 1);
+            std::shared_ptr<RenderPoint> point;
+            if (m_DrawContext.m_EnginePoints.contains(object.entityID))
+            {
+                point = m_DrawContext.m_EnginePoints.at(object.entityID);
 
-        point1->GetVertex().m_Position = object.position;
-        point1->GetVertex().m_Color = { 1, 0, 0, 1 };
+                point->GetVertex() = object.vertices[0];
 
-        AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point1->GetVertex(), 1 }, point1->GetVertexBuffer(), point1->GetVertexBufferAddress());
+                UpdatePointBuffers(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
+            }
+            else
+            {
+                point = std::make_shared<RenderPoint>();
+                m_DrawContext.m_EnginePoints[object.entityID] = point;
 
-        m_DrawContext.m_EngineDrawPoints.push_back(point1);
+                point->GetVertex() = object.vertices[0];
 
-        m_MainDeletionQueue.PushFunction([=]() {
-            DestroyBuffer(point1->GetVertexBuffer());
-        });
+                AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
+                m_MainDeletionQueue.PushFunction([=]() {
+                    DestroyBuffer(point->GetVertexBuffer());
+                });
+            }
+        }
+        else
+        {
+            std::shared_ptr<Mesh> mesh;
+            if (m_DrawContext.m_EngineMeshes.contains(object.entityID))
+            {
+                mesh = m_DrawContext.m_EngineMeshes.at(object.entityID);
+
+                mesh->GetVertices() = object.vertices;
+                mesh->GetIndices() = object.indices;
+
+                UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+            }
+            else
+            {
+                mesh = std::make_shared<Mesh>();
+                m_DrawContext.m_EngineMeshes[object.entityID] = mesh;
+
+                mesh->GetVertices() = object.vertices;
+                mesh->GetIndices() = object.indices;
+
+                AllocateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+                m_MainDeletionQueue.PushFunction([=]() {
+                    DestroyBuffer(mesh->GetVertexBuffer());
+                    DestroyBuffer(mesh->GetIndexBuffer());
+                });
+            }
+        }
+    }
+
+    m_DrawContext.m_EntityDrawPoints.clear();
+    for (auto& [_, point] : m_DrawContext.m_EnginePoints)
+    {
+        m_DrawContext.m_EntityDrawPoints.push_back(point);
+    }
+
+    m_DrawContext.m_EntityDrawMeshes.clear();
+    for (auto& [_, mesh] : m_DrawContext.m_EngineMeshes)
+    {
+        m_DrawContext.m_EntityDrawMeshes.push_back(mesh);
     }
 }
