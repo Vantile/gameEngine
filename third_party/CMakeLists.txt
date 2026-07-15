@@ -2,9 +2,6 @@ find_package(Vulkan REQUIRED)
 
 add_subdirectory(glm)
 add_subdirectory(SDL EXCLUDE_FROM_ALL)
-option(TRACY_ENABLE "" ON)
-option(TRACY_ON_DEMAND "" ON)
-add_subdirectory(tracy)
 add_subdirectory(vk-bootstrap)
 add_subdirectory(VulkanMemoryAllocator)
 

@@ -70,7 +70,7 @@ void PointRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, c
     scissor.extent.height = height;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    for (std::shared_ptr<RenderPoint> point : points)
+    for (const std::shared_ptr<RenderPoint>& point : points)
     {
         ZoneScopedN("PointRenderer::Draw PointDraw");
 

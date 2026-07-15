@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <engine/Engine.h>
 #include <execution>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
@@ -217,7 +218,7 @@ void VulkanRenderer::InitSwapchain()
     VkImageViewCreateInfo depthViewInfo = VulkanUtils::Image::ImageViewCreateInfo(m_DepthImage.m_ImageFormat, m_DepthImage.m_Image, VK_IMAGE_ASPECT_DEPTH_BIT);
     VULKAN_CHECK(vkCreateImageView(m_Device, &depthViewInfo, nullptr, &m_DepthImage.m_ImageView));
 
-    m_MainDeletionQueue.PushFunction([=]() {
+    m_MainDeletionQueue.PushFunction([&]() {
         vkDestroyImageView(m_Device, m_DrawImage.m_ImageView, nullptr);
         m_MemoryManager.DestroyImage(m_DrawImage.m_Image, m_DrawImage.m_Allocation);
 
@@ -241,7 +242,7 @@ void VulkanRenderer::InitCommands()
     VULKAN_CHECK(vkCreateCommandPool(m_Device, &commandPoolInfo, nullptr, &m_ImmediateCommandPool));
     VkCommandBufferAllocateInfo immediateAllocInfo = VulkanUtils::Command::CommandBufferAllocateInfo(m_ImmediateCommandPool, 1);
     VULKAN_CHECK(vkAllocateCommandBuffers(m_Device, &immediateAllocInfo, &m_ImmediateCommandBuffer));
-    m_MainDeletionQueue.PushFunction([=]() {
+    m_MainDeletionQueue.PushFunction([&]() {
         vkDestroyCommandPool(m_Device, m_ImmediateCommandPool, nullptr);
     });
 }
@@ -258,7 +259,7 @@ void VulkanRenderer::InitSyncStructures()
     }
 
     VULKAN_CHECK(vkCreateFence(m_Device, &fenceCreateInfo, nullptr, &m_ImmediateFence));
-    m_MainDeletionQueue.PushFunction([=]() {
+    m_MainDeletionQueue.PushFunction([&]() {
         vkDestroyFence(m_Device, m_ImmediateFence, nullptr);
     });
 }
@@ -390,7 +391,7 @@ void VulkanRenderer::InitImgui()
     initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &m_SwapchainImageFormat;
     ImGui_ImplVulkan_Init(&initInfo);
 
-    m_MainDeletionQueue.PushFunction([=]() {
+    m_MainDeletionQueue.PushFunction([&]() {
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
@@ -482,6 +483,7 @@ void VulkanRenderer::AllocatePointBuffers(const std::span<V>& vertices, Allocate
         | VK_BUFFER_USAGE_TRANSFER_DST_BIT
         | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     vertexBuffer = CreateBuffer(vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+    std::printf("Buffer created: Buffer: %p Allocation: %p\n", vertexBuffer.m_Buffer, vertexBuffer.m_Allocation);
 
     VkBufferDeviceAddressInfo deviceAddressInfo{};
     deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
@@ -530,7 +532,12 @@ void VulkanRenderer::UpdatePointBuffers(const std::span<V>& vertices, AllocatedB
         vertexCopy.dstOffset = 0;
         vertexCopy.srcOffset = 0;
         vertexCopy.size = vertexBufferSize;
+        std::printf("Buffer copied: Staging buffer: %p Vertex buffer: %p\n", stagingBuffer.m_Buffer, vertexBuffer.m_Buffer);
         vkCmdCopyBuffer(commandBuffer, stagingBuffer.m_Buffer, vertexBuffer.m_Buffer, 1, &vertexCopy);
+        if (vertexBuffer.m_Buffer == (void*)0xdddddddddddddddd || vertexBuffer.m_Buffer == nullptr)
+        {
+            int a = 0;
+        }
     });
 
     DestroyBuffer(stagingBuffer);
@@ -568,6 +575,8 @@ void VulkanRenderer::UpdateMeshBuffers(const std::span<V>& vertices, const std::
 
 void VulkanRenderer::ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function)
 {
+    std::lock_guard<std::mutex> lock(m_ImmediateSubmitMutex);
+
     VULKAN_CHECK(vkResetFences(m_Device, 1, &m_ImmediateFence));
     VULKAN_CHECK(vkResetCommandBuffer(m_ImmediateCommandBuffer, 0));
 
@@ -582,6 +591,7 @@ void VulkanRenderer::ImmediateSubmit(std::function<void(VkCommandBuffer commandB
     VkSubmitInfo2 submit = VulkanUtils::Sync::SubmitInfo(&cmdInfo, nullptr, nullptr);
 
     VULKAN_CHECK(vkQueueSubmit2(m_GraphicsQueue, 1, &submit, m_ImmediateFence));
+    
     VULKAN_CHECK(vkWaitForFences(m_Device, 1, &m_ImmediateFence, true, UINT64_MAX));
 }
 
@@ -651,7 +661,16 @@ void VulkanRenderer::InitPointPipeline()
 void VulkanRenderer::Draw(FrameData& frameData)
 {
     ZoneScoped;
-    UpdateScene(frameData);
+
+    JobCounter updateSceneCounter;
+
+    JobSystem& jobSystem = Engine::GetInstance().GetJobSystem();
+    jobSystem.Submit({
+        [&] ()
+        {
+            UpdateScene(frameData);
+        }
+    }, &updateSceneCounter);
 
     constexpr uint64_t oneSecondInNanoseconds = 1000000000;
     VulkanFrameData& currentFrame = GetCurrentFrame();
@@ -689,12 +708,28 @@ void VulkanRenderer::Draw(FrameData& frameData)
     // We will overwrite everything so we don't need to know the old layout
     VulkanUtils::Image::TransitionImage(commandBuffer, m_DrawImage.m_Image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-    DrawBackground(commandBuffer);
+    JobCounter drawCounter;
+    jobSystem.Submit({
+        [&]()
+        {
+            DrawBackground(commandBuffer);
+        }
+    }, &drawCounter);
+
+    drawCounter.Wait();
 
     VulkanUtils::Image::TransitionImage(commandBuffer, m_DrawImage.m_Image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VulkanUtils::Image::TransitionImage(commandBuffer, m_DepthImage.m_Image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    DrawGeometry(commandBuffer);
+    updateSceneCounter.Wait();
+    jobSystem.Submit({
+        [&]()
+        {
+            DrawGeometry(commandBuffer);
+        }
+    }, &drawCounter);
+
+    drawCounter.Wait();
 
     // Make both our draw image and the swap chain image transition to the correct transfer layouts
     VkImage& swapchainImage = m_SwapchainImages[swapchainImageIndex];
@@ -708,7 +743,14 @@ void VulkanRenderer::Draw(FrameData& frameData)
     // Make the swapchain image transition to the presentation layout
     VulkanUtils::Image::TransitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-    DrawImGui(commandBuffer, swapchainImageView);
+    jobSystem.Submit({
+        [&]()
+        {
+            DrawImGui(commandBuffer, swapchainImageView);
+        }
+    }, &drawCounter);
+
+    drawCounter.Wait();
 
     VulkanUtils::Image::TransitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
@@ -810,75 +852,91 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
 {
     ZoneScoped;
 
+    JobCounter renderObjectsCounter;
+    JobSystem& jobSystem = Engine::GetInstance().GetJobSystem();
     for (RenderObject& object : frameData.renderObjects)
     {
-        if (object.point)
+        jobSystem.Submit({
+        [&]()
         {
-            ZoneScopedN("VulkanRenderer::UpdateScene UpdateObject Point");
-
-            assert(object.vertices.size() == 1);
-            std::shared_ptr<RenderPoint> point;
-            if (m_DrawContext.m_EnginePoints.contains(object.entityID))
+            if (object.point)
             {
-                point = m_DrawContext.m_EnginePoints.at(object.entityID);
+                ZoneScopedN("VulkanRenderer::UpdateScene UpdateObject Point");
+                std::lock_guard<std::mutex> lock(m_DrawContext.m_EnginePointsMutex);
 
-                point->GetVertex() = object.vertices[0];
+                assert(object.vertices.size() == 1);
+                std::shared_ptr<RenderPoint> point;
+                if (m_DrawContext.m_EnginePoints.contains(object.entityID))
+                {
+                    point = m_DrawContext.m_EnginePoints.at(object.entityID);
 
-                UpdatePointBuffers(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
+                    point->GetVertex() = object.vertices[0];
+
+                    UpdatePointBuffers(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
+                }
+                else
+                {
+                    point = std::make_shared<RenderPoint>();
+
+                    m_DrawContext.m_EnginePoints[object.entityID] = point;
+
+                    point->GetVertex() = object.vertices[0];
+
+                    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
+                    m_MainDeletionQueue.PushFunction([&]() {
+                        std::printf("Buffer destroyed: Buffer: %p Allocation: %p\n", point->GetVertexBuffer().m_Buffer, point->GetVertexBuffer().m_Allocation);
+                        DestroyBuffer(point->GetVertexBuffer());
+                    });
+                }
             }
             else
             {
-                point = std::make_shared<RenderPoint>();
-                m_DrawContext.m_EnginePoints[object.entityID] = point;
+                ZoneScopedN("VulkanRenderer::UpdateScene UpdateObject Mesh");
+                std::lock_guard<std::mutex> lock(m_DrawContext.m_EngineMeshesMutex);
 
-                point->GetVertex() = object.vertices[0];
+                std::shared_ptr<Mesh> mesh;
+                if (m_DrawContext.m_EngineMeshes.contains(object.entityID))
+                {
+                    mesh = m_DrawContext.m_EngineMeshes.at(object.entityID);
 
-                AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
-                m_MainDeletionQueue.PushFunction([=]() {
-                    DestroyBuffer(point->GetVertexBuffer());
-                });
+                    mesh->GetVertices() = object.vertices;
+                    mesh->GetIndices() = object.indices;
+
+                    UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+                }
+                else
+                {
+                    mesh = std::make_shared<Mesh>();
+
+                    m_DrawContext.m_EngineMeshes[object.entityID] = mesh;
+
+                    mesh->GetVertices() = object.vertices;
+                    mesh->GetIndices() = object.indices;
+
+                    AllocateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+                    m_MainDeletionQueue.PushFunction([&]() {
+                        DestroyBuffer(mesh->GetVertexBuffer());
+                        DestroyBuffer(mesh->GetIndexBuffer());
+                    });
+                }
             }
         }
-        else
-        {
-            ZoneScopedN("VulkanRenderer::UpdateScene UpdateObject Mesh");
-
-            std::shared_ptr<Mesh> mesh;
-            if (m_DrawContext.m_EngineMeshes.contains(object.entityID))
-            {
-                mesh = m_DrawContext.m_EngineMeshes.at(object.entityID);
-
-                mesh->GetVertices() = object.vertices;
-                mesh->GetIndices() = object.indices;
-
-                UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
-            }
-            else
-            {
-                mesh = std::make_shared<Mesh>();
-                m_DrawContext.m_EngineMeshes[object.entityID] = mesh;
-
-                mesh->GetVertices() = object.vertices;
-                mesh->GetIndices() = object.indices;
-
-                AllocateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
-                m_MainDeletionQueue.PushFunction([=]() {
-                    DestroyBuffer(mesh->GetVertexBuffer());
-                    DestroyBuffer(mesh->GetIndexBuffer());
-                });
-            }
-        }
+        }, &renderObjectsCounter);
     }
+
+    renderObjectsCounter.Wait();
 
     m_DrawContext.m_EntityDrawPoints.clear();
-    for (auto& [_, point] : m_DrawContext.m_EnginePoints)
+    std::for_each(std::execution::par, std::begin(m_DrawContext.m_EnginePoints), std::end(m_DrawContext.m_EnginePoints), [&](const std::pair<EntityID, std::shared_ptr<RenderPoint>>& pair)
     {
-        m_DrawContext.m_EntityDrawPoints.push_back(point);
-    }
+        std::lock_guard<std::mutex> lock(m_DrawContext.m_EntityDrawPointsMutex);
+        m_DrawContext.m_EntityDrawPoints.push_back(pair.second);
+    });
 
     m_DrawContext.m_EntityDrawMeshes.clear();
-    for (auto& [_, mesh] : m_DrawContext.m_EngineMeshes)
+    std::for_each(std::execution::par, std::begin(m_DrawContext.m_EngineMeshes), std::end(m_DrawContext.m_EngineMeshes), [&](const std::pair<EntityID, std::shared_ptr<Mesh>>& pair)
     {
-        m_DrawContext.m_EntityDrawMeshes.push_back(mesh);
-    }
+        std::lock_guard<std::mutex> lock(m_DrawContext.m_EntityDrawMeshesMutex);
+        m_DrawContext.m_EntityDrawMeshes.push_back(pair.second);
+    });
 }

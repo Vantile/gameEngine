@@ -5,6 +5,7 @@
 #include <engine/FrameData.h>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <renderer/MeshRenderer.h>
 #include <renderer/PointRenderer.h>
 #include <renderer/VulkanDescriptor.h>
@@ -64,6 +65,11 @@ struct DrawContext
 
 	std::unordered_map<EntityID, std::shared_ptr<RenderPoint>> m_EnginePoints;
 	std::unordered_map<EntityID, std::shared_ptr<Mesh>> m_EngineMeshes;
+
+	std::mutex m_EntityDrawPointsMutex;
+	std::mutex m_EntityDrawMeshesMutex;
+	std::mutex m_EnginePointsMutex;
+	std::mutex m_EngineMeshesMutex;
 };
 
 class VulkanRenderer
@@ -143,6 +149,7 @@ private:
 	VkFence m_ImmediateFence;
 	VkCommandBuffer m_ImmediateCommandBuffer;
 	VkCommandPool m_ImmediateCommandPool;
+	std::mutex m_ImmediateSubmitMutex;
 
 	AllocatedImage m_DrawImage;
 	VkDescriptorSet m_DrawImageDescriptorSet;

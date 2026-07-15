@@ -2,6 +2,7 @@
 
 #include <print>
 #include <renderer/VulkanUtils.h>
+#include <span>
 
 void DescriptorAllocatorGrowable::Init(VkDevice device, uint32_t initialSets, std::span<PoolSizeRatio> poolRatios)
 {
