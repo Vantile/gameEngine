@@ -97,6 +97,11 @@ void VulkanRenderer::Cleanup()
     {
         vkDeviceWaitIdle(m_Device);
 
+        m_DrawContext.m_EnginePoints.clear();
+        m_DrawContext.m_EngineMeshes.clear();
+        m_DrawContext.m_EntityDrawPoints.clear();
+        m_DrawContext.m_EntityDrawMeshes.clear();
+
         for (int i = 0; i < FRAME_OVERLAP; i++)
         {
             vkDestroyCommandPool(m_Device, m_Frames[i].m_CommandPool, nullptr);
@@ -471,82 +476,108 @@ void VulkanRenderer::DestroyBuffer(const AllocatedBuffer& buffer)
     m_MemoryManager.DestroyBuffer(buffer.m_Buffer, buffer.m_Allocation);
 }
 
-template <typename V>
-void VulkanRenderer::AllocatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress)
+void VulkanRenderer::AllocatePointBuffers(RenderPoint& point)
 {
     ZoneScoped;
 
-    const size_t vertexBufferSize = vertices.size() * sizeof(V);
-
+    const size_t vertexBufferSize = sizeof(Vertex);
     VkBufferUsageFlags vertexBufferFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
         | VK_BUFFER_USAGE_TRANSFER_DST_BIT
         | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-    vertexBuffer = CreateBuffer(vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+    point.CreateVertexBuffer(m_Device, vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+    //point.GetVertexBuffer() = CreateBuffer(vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+    //m_MainDeletionQueue.PushFunction([&]() {
+    //    DestroyBuffer(point.GetVertexBuffer());
+    //});
 
-    VkBufferDeviceAddressInfo deviceAddressInfo{};
-    deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    deviceAddressInfo.buffer = vertexBuffer.m_Buffer;
-    vertexBufferAddress = vkGetBufferDeviceAddress(m_Device, &deviceAddressInfo);
+    //VkBufferDeviceAddressInfo deviceAddressInfo{};
+    //deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    //deviceAddressInfo.buffer = point.GetVertexBuffer().m_Buffer;
+    //point.GetVertexBufferAddress() = vkGetBufferDeviceAddress(m_Device, &deviceAddressInfo);
 
-    UpdatePointBuffers<V>(vertices, vertexBuffer, vertexBufferAddress);
+    UpdatePointBuffers(point);
 }
 
-template <typename V, typename I>
-void VulkanRenderer::AllocateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress)
+void VulkanRenderer::AllocateMeshBuffers(Mesh& mesh)
 {
     ZoneScoped;
 
-    const size_t vertexBufferSize = vertices.size() * sizeof(V);
-    const size_t indexBufferSize = indices.size() * sizeof(I);
+    const std::vector<Vertex>& vertices = mesh.GetVertices();
+    const std::vector<uint32_t>& indices = mesh.GetIndices();
+
+    assert(vertices.size() > 0 && indices.size() > 0);
+
+    const size_t vertexBufferSize = vertices.size() * sizeof(vertices[0]);
+    const size_t indexBufferSize = indices.size() * sizeof(indices[0]);
 
     VkBufferUsageFlags vertexBufferFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
         | VK_BUFFER_USAGE_TRANSFER_DST_BIT
         | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-    vertexBuffer = CreateBuffer(vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+    //mesh.GetVertexBuffer() = CreateBuffer(vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+    mesh.CreateVertexBuffer(m_Device, vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
 
     VkBufferUsageFlags indexBufferFlags = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    indexBuffer = CreateBuffer(indexBufferSize, indexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+    mesh.CreateIndexBuffer(indexBufferSize, indexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
+    //mesh.GetIndexBuffer() = CreateBuffer(indexBufferSize, indexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
 
-    VkBufferDeviceAddressInfo deviceAddressInfo{};
-    deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    deviceAddressInfo.buffer = vertexBuffer.m_Buffer;
-    vertexBufferAddress = vkGetBufferDeviceAddress(m_Device, &deviceAddressInfo);
+    //VkBufferDeviceAddressInfo deviceAddressInfo{};
+    //deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    //deviceAddressInfo.buffer = mesh.GetVertexBuffer().m_Buffer;
+    //mesh.GetVertexBufferAddress() = vkGetBufferDeviceAddress(m_Device, &deviceAddressInfo);
 
-    UpdateMeshBuffers<V, I>(vertices, indices, vertexBuffer, indexBuffer, vertexBufferAddress);
+    UpdateMeshBuffers(mesh);
 }
 
-template <typename V>
-void VulkanRenderer::UpdatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress)
+void VulkanRenderer::UpdatePointBuffers(RenderPoint& point)
 {
     ZoneScoped;
 
-    const size_t vertexBufferSize = vertices.size() * sizeof(V);
+    const size_t vertexBufferSize = sizeof(Vertex);
+    if (point.GetStagingBuffer().m_Buffer == nullptr)
+    {
+        point.CreateStagingBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+        //point.GetStagingBuffer() = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+        //m_MainDeletionQueue.PushFunction([&]()
+        //{
+        //    DestroyBuffer(point.GetStagingBuffer());
+        //});
+    }
 
-    AllocatedBuffer stagingBuffer = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* data = stagingBuffer.m_Allocation->GetMappedData();
-    memcpy(data, vertices.data(), vertexBufferSize);
+    void* data = point.GetStagingBuffer().m_Allocation->GetMappedData();
+    memcpy(data, &point.GetVertex(), vertexBufferSize);
     ImmediateSubmit([&](VkCommandBuffer commandBuffer) {
         VkBufferCopy vertexCopy{ 0 };
         vertexCopy.dstOffset = 0;
         vertexCopy.srcOffset = 0;
         vertexCopy.size = vertexBufferSize;
-        vkCmdCopyBuffer(commandBuffer, stagingBuffer.m_Buffer, vertexBuffer.m_Buffer, 1, &vertexCopy);
+        vkCmdCopyBuffer(commandBuffer, point.GetStagingBuffer().m_Buffer, point.GetVertexBuffer().m_Buffer, 1, &vertexCopy);
     });
-
-    DestroyBuffer(stagingBuffer);
 }
 
-template <typename V, typename I>
-void VulkanRenderer::UpdateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress)
+void VulkanRenderer::UpdateMeshBuffers(Mesh& mesh)
 {
     ZoneScoped;
 
-    const size_t vertexBufferSize = vertices.size() * sizeof(V);
-    const size_t indexBufferSize = indices.size() * sizeof(I);
+    const std::vector<Vertex>& vertices = mesh.GetVertices();
+    const std::vector<uint32_t>& indices = mesh.GetIndices();
 
-    AllocatedBuffer stagingBuffer = CreateBuffer(vertexBufferSize + indexBufferSize,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* data = stagingBuffer.m_Allocation->GetMappedData();
+    assert(vertices.size() > 0 && indices.size() > 0);
+
+    const size_t vertexBufferSize = vertices.size() * sizeof(vertices[0]);
+    const size_t indexBufferSize = indices.size() * sizeof(indices[0]);
+
+    if (mesh.GetStagingBuffer().m_Buffer == nullptr)
+    {
+        //mesh.GetStagingBuffer() = CreateBuffer(vertexBufferSize + indexBufferSize,
+        //    VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+        mesh.CreateStagingBuffer(vertexBufferSize + indexBufferSize,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+        //m_MainDeletionQueue.PushFunction([&]()
+        //{
+        //    DestroyBuffer(mesh.GetStagingBuffer());
+        //});
+    }
+    void* data = mesh.GetStagingBuffer().m_Allocation->GetMappedData();
     memcpy(data, vertices.data(), vertexBufferSize);
     memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
     ImmediateSubmit([&](VkCommandBuffer commandBuffer) {
@@ -554,16 +585,14 @@ void VulkanRenderer::UpdateMeshBuffers(const std::span<V>& vertices, const std::
         vertexCopy.dstOffset = 0;
         vertexCopy.srcOffset = 0;
         vertexCopy.size = vertexBufferSize;
-        vkCmdCopyBuffer(commandBuffer, stagingBuffer.m_Buffer, vertexBuffer.m_Buffer, 1, &vertexCopy);
+        vkCmdCopyBuffer(commandBuffer, mesh.GetStagingBuffer().m_Buffer, mesh.GetVertexBuffer().m_Buffer, 1, &vertexCopy);
 
         VkBufferCopy indexCopy{ 0 };
         indexCopy.dstOffset = 0;
         indexCopy.srcOffset = vertexBufferSize;
         indexCopy.size = indexBufferSize;
-        vkCmdCopyBuffer(commandBuffer, stagingBuffer.m_Buffer, indexBuffer.m_Buffer, 1, &indexCopy);
+        vkCmdCopyBuffer(commandBuffer, mesh.GetStagingBuffer().m_Buffer, mesh.GetIndexBuffer().m_Buffer, 1, &indexCopy);
     });
-
-    DestroyBuffer(stagingBuffer);
 }
 
 void VulkanRenderer::ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function)
@@ -868,7 +897,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
 
                     point->GetVertex() = object.vertices[0];
 
-                    UpdatePointBuffers(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
+                    UpdatePointBuffers(*point);
                 }
                 else
                 {
@@ -878,10 +907,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
 
                     point->GetVertex() = object.vertices[0];
 
-                    AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
-                    m_MainDeletionQueue.PushFunction([&]() {
-                        DestroyBuffer(point->GetVertexBuffer());
-                    });
+                    AllocatePointBuffers(*point);
                 }
             }
             else
@@ -898,7 +924,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
                     mesh->GetVertices() = object.vertices;
                     mesh->GetIndices() = object.indices;
 
-                    UpdateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
+                    UpdateMeshBuffers(*mesh);
                 }
                 else
                 {
@@ -909,11 +935,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
                     mesh->GetVertices() = object.vertices;
                     mesh->GetIndices() = object.indices;
 
-                    AllocateMeshBuffers<Vertex, uint32_t>(mesh->GetVertices(), mesh->GetIndices(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), mesh->GetVertexBufferAddress());
-                    m_MainDeletionQueue.PushFunction([&]() {
-                        DestroyBuffer(mesh->GetVertexBuffer());
-                        DestroyBuffer(mesh->GetIndexBuffer());
-                    });
+                    AllocateMeshBuffers(*mesh);
                 }
             }
         }

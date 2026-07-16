@@ -98,17 +98,11 @@ private:
 	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	void DestroyBuffer(const AllocatedBuffer& buffer);
 
-	template <typename V>
-	void AllocatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress);
+	void AllocatePointBuffers(RenderPoint& point);
+	void AllocateMeshBuffers(Mesh& mesh);
 
-	template <typename V, typename I>
-	void AllocateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress);
-
-	template <typename V>
-	void UpdatePointBuffers(const std::span<V>& vertices, AllocatedBuffer& vertexBuffer, VkDeviceAddress& vertexBufferAddress);
-
-	template <typename V, typename I>
-	void UpdateMeshBuffers(const std::span<V>& vertices, const std::span<I>& indices, AllocatedBuffer& vertexBuffer, AllocatedBuffer& indexBuffer, VkDeviceAddress& vertexBufferAddress);
+	void UpdatePointBuffers(RenderPoint& point);
+	void UpdateMeshBuffers(Mesh& mesh);
 
 	void ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function);
 

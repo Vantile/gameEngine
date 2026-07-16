@@ -7,16 +7,24 @@
 class RenderPoint : public IRenderable
 {
 public:
+	~RenderPoint();
+
 	void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
+
+	void CreateVertexBuffer(VkDevice device, size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	void CreateStagingBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 
 	Vertex& GetVertex() { return m_Vertex; }
 
-	AllocatedBuffer& GetVertexBuffer() { return m_VertexBuffer; }
-	VkDeviceAddress& GetVertexBufferAddress() { return m_VertexBufferAddress; }
+	const AllocatedBuffer& GetVertexBuffer() { return m_VertexBuffer; }
+	const VkDeviceAddress& GetVertexBufferAddress() { return m_VertexBufferAddress; }
+	const AllocatedBuffer& GetStagingBuffer() { return m_StagingBuffer; }
 
 private:
 	Vertex m_Vertex;
 
 	AllocatedBuffer m_VertexBuffer;
 	VkDeviceAddress m_VertexBufferAddress;
+
+	AllocatedBuffer m_StagingBuffer;
 };

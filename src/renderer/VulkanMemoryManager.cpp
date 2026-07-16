@@ -11,11 +11,22 @@ void VulkanMemoryManager::InitAllocator(const VkPhysicalDevice& chosenGPU, const
     allocatorInfo.instance = instance;
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     vmaCreateAllocator(&allocatorInfo, &m_Allocator);
+
+    m_Instance = this;
 }
 
 void VulkanMemoryManager::DestroyAllocator()
 {
+    char* statsString = nullptr;
+    vmaBuildStatsString(m_Allocator, &statsString, VK_TRUE);
+
+    std::printf("%s\n", statsString);
+
+    vmaFreeStatsString(m_Allocator, statsString);
+
     vmaDestroyAllocator(m_Allocator);
+
+    m_Instance = nullptr;
 }
 
 void VulkanMemoryManager::AllocateImage(const VkImageCreateInfo* imageInfo, const VmaAllocationCreateInfo* allocationCreateInfo, VkImage* image, VmaAllocation* allocation)
