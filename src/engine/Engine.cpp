@@ -3,7 +3,6 @@
 #include <entitysystem/ECSManager.h>
 #include <renderer/VulkanRenderer.h>
 #include <SDL3/SDL.h>
-#define TRACY_ENABLE
 #include <tracy/Tracy.hpp>
 
 Engine::Engine() = default;
@@ -11,13 +10,15 @@ Engine::~Engine() = default;
 
 void Engine::Init()
 {
+    tracy::SetThreadName("Main Thread");
+
     m_ECSManager = std::make_unique<ECSManager>();
     m_Renderer = std::make_unique<VulkanRenderer>();
     m_JobSystem = std::make_unique<JobSystem>();
 
     m_ECSManager->Init();
     m_Renderer->Init();
-    m_JobSystem->Init();
+    m_JobSystem->Init(4);
 
     m_Instance = this;
 }
@@ -30,6 +31,7 @@ void Engine::Run()
     // Main loop
     while (!bQuit)
     {
+        ZoneScoped;
         // Handle events on queue
         while (SDL_PollEvent(&e) != 0)
         {

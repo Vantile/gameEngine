@@ -13,7 +13,6 @@
 #include <renderer/Vertex.h>
 #include <renderer/VulkanUtils.h>
 #include <SDL3/SDL_vulkan.h>
-#include <tracy/Tracy.hpp>
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
@@ -483,7 +482,6 @@ void VulkanRenderer::AllocatePointBuffers(const std::span<V>& vertices, Allocate
         | VK_BUFFER_USAGE_TRANSFER_DST_BIT
         | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     vertexBuffer = CreateBuffer(vertexBufferSize, vertexBufferFlags, VMA_MEMORY_USAGE_GPU_ONLY);
-    std::printf("Buffer created: Buffer: %p Allocation: %p\n", vertexBuffer.m_Buffer, vertexBuffer.m_Allocation);
 
     VkBufferDeviceAddressInfo deviceAddressInfo{};
     deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
@@ -532,12 +530,7 @@ void VulkanRenderer::UpdatePointBuffers(const std::span<V>& vertices, AllocatedB
         vertexCopy.dstOffset = 0;
         vertexCopy.srcOffset = 0;
         vertexCopy.size = vertexBufferSize;
-        std::printf("Buffer copied: Staging buffer: %p Vertex buffer: %p\n", stagingBuffer.m_Buffer, vertexBuffer.m_Buffer);
         vkCmdCopyBuffer(commandBuffer, stagingBuffer.m_Buffer, vertexBuffer.m_Buffer, 1, &vertexCopy);
-        if (vertexBuffer.m_Buffer == (void*)0xdddddddddddddddd || vertexBuffer.m_Buffer == nullptr)
-        {
-            int a = 0;
-        }
     });
 
     DestroyBuffer(stagingBuffer);
@@ -575,7 +568,8 @@ void VulkanRenderer::UpdateMeshBuffers(const std::span<V>& vertices, const std::
 
 void VulkanRenderer::ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function)
 {
-    std::lock_guard<std::mutex> lock(m_ImmediateSubmitMutex);
+    std::lock_guard<LockableBase(std::mutex)> lock(m_ImmediateSubmitMutex);
+    LockMark(m_ImmediateSubmitMutex);
 
     VULKAN_CHECK(vkResetFences(m_Device, 1, &m_ImmediateFence));
     VULKAN_CHECK(vkResetCommandBuffer(m_ImmediateCommandBuffer, 0));
@@ -836,6 +830,7 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
     m_PointRenderer.Draw(commandBuffer, m_DrawExtent, m_DrawContext.m_EntityDrawPoints);
 
     vkCmdEndRendering(commandBuffer);
+
 }
 
 void VulkanRenderer::DrawImGui(VkCommandBuffer commandBuffer, VkImageView targetImageView)
@@ -862,7 +857,8 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
             if (object.point)
             {
                 ZoneScopedN("VulkanRenderer::UpdateScene UpdateObject Point");
-                std::lock_guard<std::mutex> lock(m_DrawContext.m_EnginePointsMutex);
+                std::lock_guard<LockableBase(std::mutex)> lock(m_DrawContext.m_EnginePointsMutex);
+                LockMark(m_DrawContext.m_EnginePointsMutex);
 
                 assert(object.vertices.size() == 1);
                 std::shared_ptr<RenderPoint> point;
@@ -884,7 +880,6 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
 
                     AllocatePointBuffers<Vertex>(std::span<Vertex>{ &point->GetVertex(), 1 }, point->GetVertexBuffer(), point->GetVertexBufferAddress());
                     m_MainDeletionQueue.PushFunction([&]() {
-                        std::printf("Buffer destroyed: Buffer: %p Allocation: %p\n", point->GetVertexBuffer().m_Buffer, point->GetVertexBuffer().m_Allocation);
                         DestroyBuffer(point->GetVertexBuffer());
                     });
                 }
@@ -892,7 +887,8 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
             else
             {
                 ZoneScopedN("VulkanRenderer::UpdateScene UpdateObject Mesh");
-                std::lock_guard<std::mutex> lock(m_DrawContext.m_EngineMeshesMutex);
+                std::lock_guard<LockableBase(std::mutex)> lock(m_DrawContext.m_EngineMeshesMutex);
+                LockMark(m_DrawContext.m_EngineMeshesMutex);
 
                 std::shared_ptr<Mesh> mesh;
                 if (m_DrawContext.m_EngineMeshes.contains(object.entityID))
@@ -929,14 +925,16 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
     m_DrawContext.m_EntityDrawPoints.clear();
     std::for_each(std::execution::par, std::begin(m_DrawContext.m_EnginePoints), std::end(m_DrawContext.m_EnginePoints), [&](const std::pair<EntityID, std::shared_ptr<RenderPoint>>& pair)
     {
-        std::lock_guard<std::mutex> lock(m_DrawContext.m_EntityDrawPointsMutex);
+        std::lock_guard<LockableBase(std::mutex)> lock(m_DrawContext.m_EntityDrawPointsMutex);
+        LockMark(m_DrawContext.m_EntityDrawPointsMutex);
         m_DrawContext.m_EntityDrawPoints.push_back(pair.second);
     });
 
     m_DrawContext.m_EntityDrawMeshes.clear();
     std::for_each(std::execution::par, std::begin(m_DrawContext.m_EngineMeshes), std::end(m_DrawContext.m_EngineMeshes), [&](const std::pair<EntityID, std::shared_ptr<Mesh>>& pair)
     {
-        std::lock_guard<std::mutex> lock(m_DrawContext.m_EntityDrawMeshesMutex);
+        std::lock_guard<LockableBase(std::mutex)> lock(m_DrawContext.m_EntityDrawMeshesMutex);
+        LockMark(m_DrawContext.m_EntityDrawMeshesMutex);
         m_DrawContext.m_EntityDrawMeshes.push_back(pair.second);
     });
 }

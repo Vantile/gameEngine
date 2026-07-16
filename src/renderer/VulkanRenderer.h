@@ -12,6 +12,7 @@
 #include <renderer/VulkanMemoryManager.h>
 #include <renderer/VulkanTypes.h>
 #include <SDL3/SDL.h>
+#include <tracy/Tracy.hpp>
 #include <vector>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
@@ -66,10 +67,10 @@ struct DrawContext
 	std::unordered_map<EntityID, std::shared_ptr<RenderPoint>> m_EnginePoints;
 	std::unordered_map<EntityID, std::shared_ptr<Mesh>> m_EngineMeshes;
 
-	std::mutex m_EntityDrawPointsMutex;
-	std::mutex m_EntityDrawMeshesMutex;
-	std::mutex m_EnginePointsMutex;
-	std::mutex m_EngineMeshesMutex;
+	TracyLockable(std::mutex, m_EntityDrawPointsMutex);
+	TracyLockable(std::mutex, m_EntityDrawMeshesMutex);
+	TracyLockable(std::mutex, m_EnginePointsMutex);
+	TracyLockable(std::mutex, m_EngineMeshesMutex);
 };
 
 class VulkanRenderer
@@ -149,7 +150,7 @@ private:
 	VkFence m_ImmediateFence;
 	VkCommandBuffer m_ImmediateCommandBuffer;
 	VkCommandPool m_ImmediateCommandPool;
-	std::mutex m_ImmediateSubmitMutex;
+	TracyLockable(std::mutex, m_ImmediateSubmitMutex);
 
 	AllocatedImage m_DrawImage;
 	VkDescriptorSet m_DrawImageDescriptorSet;
