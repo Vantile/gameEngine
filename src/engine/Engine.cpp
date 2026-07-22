@@ -16,9 +16,10 @@ void Engine::Init()
     m_Renderer = std::make_unique<VulkanRenderer>();
     m_JobSystem = std::make_unique<JobSystem>();
 
+    constexpr size_t threadCount = 4;
     m_ECSManager->Init();
-    m_Renderer->Init();
-    m_JobSystem->Init(4);
+    m_Renderer->Init(threadCount);
+    m_JobSystem->Init(threadCount);
 
     m_Instance = this;
 }

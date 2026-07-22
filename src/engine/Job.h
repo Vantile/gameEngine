@@ -43,6 +43,8 @@ public:
 	void Submit(Job job, JobCounter* counter);
 	void Shutdown();
 
+	size_t GetThreadCount() const { return m_Workers.size(); }
+
 private:
 	void WorkerLoop();
 

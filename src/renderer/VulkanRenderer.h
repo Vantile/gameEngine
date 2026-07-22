@@ -41,6 +41,12 @@ struct DeletionQueue
 	}
 };
 
+struct ThreadData
+{
+	VkCommandBuffer m_ImmediateCommandBuffer;
+	VkCommandPool m_ImmediateCommandPool;
+};
+
 struct VulkanFrameData
 {
 	VkCommandPool m_CommandPool;
@@ -76,7 +82,7 @@ struct DrawContext
 class VulkanRenderer
 {
 public:
-	void Init();
+	void Init(size_t threadCount);
 	void Run(FrameData& frameData);
 	void ProcessSDLEvent(SDL_Event& e);
 	void Cleanup();
@@ -101,10 +107,13 @@ private:
 	void AllocatePointBuffers(RenderPoint& point);
 	void AllocateMeshBuffers(Mesh& mesh);
 
-	void UpdatePointBuffers(RenderPoint& point);
-	void UpdateMeshBuffers(Mesh& mesh);
+	void UpdatePointBuffers(RenderPoint& point, ThreadData& threadData);
+	void UpdateMeshBuffers(Mesh& mesh, ThreadData& threadData);
 
-	void ImmediateSubmit(std::function<void(VkCommandBuffer commandBuffer)>&& function);
+	void BeginTransferCommandBuffer(VkCommandBuffer commandBuffer);
+	void EndTransferCommandBuffer(VkCommandBuffer commandBuffer);
+	void QueueTransferCommand(VkCommandBuffer commandBuffer, std::function<void(VkCommandBuffer commandBuffer)>&& function);
+	void SubmitTransferQueue(VkCommandBuffer commandBuffer);
 
 	void InitBackgroundPipelines();
 	void InitRenderPipeline();
@@ -141,10 +150,7 @@ private:
 
 	std::array<VulkanFrameData, FRAME_OVERLAP> m_Frames;
 
-	VkFence m_ImmediateFence;
-	VkCommandBuffer m_ImmediateCommandBuffer;
-	VkCommandPool m_ImmediateCommandPool;
-	TracyLockable(std::mutex, m_ImmediateSubmitMutex);
+	std::vector<ThreadData> m_ThreadData;
 
 	AllocatedImage m_DrawImage;
 	VkDescriptorSet m_DrawImageDescriptorSet;
@@ -159,6 +165,10 @@ private:
 
 	VulkanMemoryManager m_MemoryManager;
 	DescriptorAllocatorGrowable m_GlobalDescriptorAllocator;
+
+	VkQueue m_TransferQueue;
+	uint32_t m_TransferQueueIndex = UINT32_MAX;
+	VkFence m_TransferFence;
 
 	VkQueue m_GraphicsQueue;
 	uint32_t m_GraphicsQueueIndex = UINT32_MAX;
