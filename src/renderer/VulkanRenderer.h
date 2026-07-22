@@ -13,6 +13,7 @@
 #include <renderer/VulkanTypes.h>
 #include <SDL3/SDL.h>
 #include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
 #include <vector>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
@@ -90,11 +91,13 @@ public:
 private:
 	void InitVulkan();
 	void InitSwapchain();
+	void InitThreadData(size_t threadCount);
 	void InitCommands();
 	void InitSyncStructures();
 	void InitDescriptors();
 	void InitPipelines();
 	void InitImgui();
+	void InitTracy();
 	void InitDefaultData();
 
 	void CreateSwapchain(uint32_t width, uint32_t height);
@@ -181,6 +184,9 @@ private:
 	MeshRenderer m_MeshRenderer;
 
 	DrawContext m_DrawContext;
+
+	TracyVkCtx m_TracyGraphicsContext;
+	//TracyVkCtx m_TracyTransferContext;
 
 	VkExtent2D m_DrawExtent;
 	float m_RenderScale = 1.f;

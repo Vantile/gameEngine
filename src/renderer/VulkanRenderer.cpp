@@ -79,18 +79,13 @@ void VulkanRenderer::Init(size_t threadCount)
 
     InitVulkan();
     InitSwapchain();
-
-    // Init thread data
-    m_ThreadData.resize(threadCount);
-    m_MainDeletionQueue.PushFunction([&]() {
-        m_ThreadData.clear();
-    });
-
+    InitThreadData(threadCount);
     InitCommands();
     InitSyncStructures();
     InitDescriptors();
     InitPipelines();
     InitImgui();
+    InitTracy();
     InitDefaultData();
     //InitCamera();
 
@@ -238,6 +233,14 @@ void VulkanRenderer::InitSwapchain()
 
         vkDestroyImageView(m_Device, m_DepthImage.m_ImageView, nullptr);
         m_MemoryManager.DestroyImage(m_DepthImage.m_Image, m_DepthImage.m_Allocation);
+    });
+}
+
+void VulkanRenderer::InitThreadData(size_t threadCount)
+{
+    m_ThreadData.resize(threadCount);
+    m_MainDeletionQueue.PushFunction([&]() {
+        m_ThreadData.clear();
     });
 }
 
@@ -415,6 +418,43 @@ void VulkanRenderer::InitImgui()
         ImGui::DestroyContext();
         vkDestroyDescriptorPool(m_Device, imguiPool, nullptr);
     });
+}
+
+void VulkanRenderer::InitTracy()
+{
+    {
+        VkCommandPool tracyGraphicsCommandPool;
+        VkCommandPoolCreateInfo graphicsCommandPoolInfo = VulkanUtils::Command::CommandPoolCreateInfo(m_GraphicsQueueIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+        VULKAN_CHECK(vkCreateCommandPool(m_Device, &graphicsCommandPoolInfo, nullptr, &tracyGraphicsCommandPool));
+
+        VkCommandBufferAllocateInfo commandAllocInfo = VulkanUtils::Command::CommandBufferAllocateInfo(tracyGraphicsCommandPool, 1);
+        VkCommandBuffer tracyGraphicsCommandBuffer;
+        VULKAN_CHECK(vkAllocateCommandBuffers(m_Device, &commandAllocInfo, &tracyGraphicsCommandBuffer));
+
+        VkCommandBufferBeginInfo cmdBeginInfo = VulkanUtils::Command::CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+        VULKAN_CHECK(vkBeginCommandBuffer(tracyGraphicsCommandBuffer, &cmdBeginInfo));
+
+        m_TracyGraphicsContext = TracyVkContext(
+            m_ChosenGPU,
+            m_Device,
+            m_GraphicsQueue,
+            tracyGraphicsCommandBuffer
+        );
+
+        m_MainDeletionQueue.PushFunction([&]() {
+            TracyVkDestroy(m_TracyGraphicsContext);
+        });
+
+        VULKAN_CHECK(vkEndCommandBuffer(tracyGraphicsCommandBuffer));
+
+        VkCommandBufferSubmitInfo cmdInfo = VulkanUtils::Command::CommandBufferSubmitInfo(tracyGraphicsCommandBuffer);
+        VkSubmitInfo2 submit = VulkanUtils::Sync::SubmitInfo(&cmdInfo, nullptr, nullptr);
+
+        VULKAN_CHECK(vkQueueSubmit2(m_GraphicsQueue, 1, &submit, VK_NULL_HANDLE));
+        VULKAN_CHECK(vkQueueWaitIdle(m_GraphicsQueue));
+        vkFreeCommandBuffers(m_Device, tracyGraphicsCommandPool, 1, &tracyGraphicsCommandBuffer);
+        vkDestroyCommandPool(m_Device, tracyGraphicsCommandPool, nullptr);
+    }
 }
 
 void VulkanRenderer::InitDefaultData()
@@ -826,6 +866,7 @@ void VulkanRenderer::Draw(FrameData& frameData)
     VkSemaphoreSubmitInfo signalInfo = VulkanUtils::Sync::SemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, currentFrame.m_RenderSemaphore);
 
     // Submit the commands to graphics queue for rendering
+    TracyVkCollect(m_TracyGraphicsContext, commandBuffer);
     VkSubmitInfo2 submit = VulkanUtils::Sync::SubmitInfo(&commandBufferSubmitInfo, &signalInfo, &waitInfo);
     VULKAN_CHECK(vkQueueSubmit2(m_GraphicsQueue, 1, &submit, currentFrame.m_RenderFence));
 
@@ -855,6 +896,7 @@ void VulkanRenderer::Draw(FrameData& frameData)
 void VulkanRenderer::DrawBackground(VkCommandBuffer commandBuffer)
 {
     ZoneScoped;
+    TracyVkZone(m_TracyGraphicsContext, commandBuffer, "Compute Pass");
 
     // Bind the gradient drawing compute pipeline
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_BackgroundPipeline);
@@ -872,6 +914,7 @@ void VulkanRenderer::DrawBackground(VkCommandBuffer commandBuffer)
 void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
 {
     ZoneScoped;
+    TracyVkZone(m_TracyGraphicsContext, commandBuffer, "Geometry Pass");
 
     VulkanFrameData& currentFrame = GetCurrentFrame();
     AllocatedBuffer gpuSceneDataBuffer = CreateBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -902,6 +945,7 @@ void VulkanRenderer::DrawGeometry(VkCommandBuffer commandBuffer)
 
 void VulkanRenderer::DrawImGui(VkCommandBuffer commandBuffer, VkImageView targetImageView)
 {
+    TracyVkZone(m_TracyGraphicsContext, commandBuffer, "ImGUI");
     VkRenderingAttachmentInfo colorAttachment = VulkanUtils::Render::RenderingAttachmentInfo(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingInfo renderInfo = VulkanUtils::Render::RenderingInfo(m_SwapchainExtent, &colorAttachment, nullptr);
 
@@ -941,6 +985,8 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
         jobSystem.Submit({
         [threadRenderObjects, threadPoints, threadData, this]()
         {
+            // TODO: Profile transfer commands
+            //TracyVkZone(m_TracyContext, threadData->m_ImmediateCommandBuffer, "Transfer Commands");
             BeginTransferCommandBuffer(threadData->m_ImmediateCommandBuffer);
             for (RenderObject& object : *threadRenderObjects)
             {
@@ -1018,6 +1064,8 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
 
     for (ThreadData& threadData : m_ThreadData)
     {
+        // TODO: Profile transfer commands
+        //TracyVkCollect(m_TracyContext, threadData.m_ImmediateCommandBuffer);
         SubmitTransferQueue(threadData.m_ImmediateCommandBuffer);
     }
 
