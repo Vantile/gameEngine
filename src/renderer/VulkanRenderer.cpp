@@ -472,7 +472,7 @@ void VulkanRenderer::CreateSwapchain(uint32_t width, uint32_t height)
     surfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     vkb::Swapchain vkbSwapchain = swapchainBuilder
         .set_desired_format(surfaceFormat)
-        .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+        .set_desired_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)
         .set_desired_extent(width, height)
         .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         .build().value();
@@ -775,23 +775,30 @@ void VulkanRenderer::Draw(FrameData& frameData)
     constexpr uint64_t oneSecondInNanoseconds = 1000000000;
     VulkanFrameData& currentFrame = GetCurrentFrame();
 
-    // Wait for the previous frame to finish rendering
-    VULKAN_CHECK(vkWaitForFences(m_Device, 1, &currentFrame.m_RenderFence, true, oneSecondInNanoseconds));
+    {
+        ZoneScopedN("Wait For Render Fence");
+        // Wait for the previous frame to finish rendering
+        VULKAN_CHECK(vkWaitForFences(m_Device, 1, &currentFrame.m_RenderFence, true, oneSecondInNanoseconds));
+    }
+
     currentFrame.m_FrameDeletionQueue.Flush();
     //currentFrame.m_FrameDescriptors.ClearPools(m_Device);
     VULKAN_CHECK(vkResetFences(m_Device, 1, &currentFrame.m_RenderFence));
 
     // Acquire next image from the swapchain
     uint32_t swapchainImageIndex;
-    VkResult result = vkAcquireNextImageKHR(m_Device, m_Swapchain, oneSecondInNanoseconds, currentFrame.m_SwapchainSemaphore, nullptr, &swapchainImageIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
-        m_ResizeRequested = true;
-        return;
-    }
-    else
-    {
-        VULKAN_CHECK(result);
+        ZoneScopedN("Acquire Next Image KHR");
+        VkResult result = vkAcquireNextImageKHR(m_Device, m_Swapchain, oneSecondInNanoseconds, currentFrame.m_SwapchainSemaphore, nullptr, &swapchainImageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            m_ResizeRequested = true;
+            return;
+        }
+        else
+        {
+            VULKAN_CHECK(result);
+        }
     }
 
     VkCommandBuffer commandBuffer = currentFrame.m_CommandBuffer;
@@ -814,14 +821,20 @@ void VulkanRenderer::Draw(FrameData& frameData)
         {
             DrawBackground(commandBuffer);
         }
-    }, &drawCounter);
+        }, &drawCounter);
 
-    drawCounter.Wait();
+    {
+        ZoneScopedN("Draw Background Counter Wait");
+        drawCounter.Wait();
+    }
 
     VulkanUtils::Image::TransitionImage(commandBuffer, m_DrawImage.m_Image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VulkanUtils::Image::TransitionImage(commandBuffer, m_DepthImage.m_Image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    updateSceneCounter.Wait();
+    {
+        ZoneScopedN("Update Scene Counter Wait");
+        updateSceneCounter.Wait();
+    }
 
     jobSystem.Submit({
         [&]()
@@ -830,7 +843,10 @@ void VulkanRenderer::Draw(FrameData& frameData)
         }
     }, &drawCounter);
 
-    drawCounter.Wait();
+    {
+        ZoneScopedN("Draw Geometry Counter Wait");
+        drawCounter.Wait();
+    }
 
     // Make both our draw image and the swap chain image transition to the correct transfer layouts
     VkImage& swapchainImage = m_SwapchainImages[swapchainImageIndex];
@@ -851,7 +867,10 @@ void VulkanRenderer::Draw(FrameData& frameData)
         }
     }, &drawCounter);
 
-    drawCounter.Wait();
+    {
+        ZoneScopedN("Draw ImGUI Counter Wait");
+        drawCounter.Wait();
+    }
 
     VulkanUtils::Image::TransitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 

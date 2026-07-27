@@ -33,6 +33,7 @@ struct DeletionQueue
 
 	void Flush()
 	{
+		ZoneScoped;
 		for (auto it = m_Deletors.rbegin(); it < m_Deletors.rend(); ++it)
 		{
 			(*it)();
