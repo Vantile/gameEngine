@@ -67,6 +67,20 @@ void ECSManager::Init()
 void ECSManager::Run(FrameData& frameData)
 {
 	ZoneScoped;
+
+	RenderableComponent renderablePoint;
+	renderablePoint.m_RenderType = RenderableComponent::RenderType::Point;
+	while (!m_SpawnQueue.empty())
+	{
+		glm::vec3& spawnPosition = m_SpawnQueue.front();
+		m_SpawnQueue.pop();
+		TransformComponent transform;
+		transform.m_Position = std::move(spawnPosition);
+		EntityID newEntity = m_Registry->CreateEntity();
+		m_Registry->Emplace(newEntity, std::move(transform));
+		m_Registry->Emplace(newEntity, renderablePoint);
+	}
+
 	for (std::unique_ptr<System>& system : m_Systems)
 	{
 		system->Update(*m_Registry.get(), frameData);

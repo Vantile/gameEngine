@@ -134,8 +134,6 @@ private:
 	VulkanFrameData& GetCurrentFrame() { return m_Frames[m_FrameNumber % FRAME_OVERLAP]; };
 
 private:
-	static constexpr uint32_t WINDOW_WIDTH = 1200;
-	static constexpr uint32_t WINDOW_HEIGHT = 800;
 	static constexpr uint32_t FRAME_OVERLAP = 2;
 
 	SDL_Window* m_Window = nullptr;
@@ -144,7 +142,6 @@ private:
 	VkSurfaceKHR m_Surface;
 	VkDevice m_Device;
 	VkPhysicalDevice m_ChosenGPU;
-	VkExtent2D m_WindowExtent{ WINDOW_WIDTH, WINDOW_HEIGHT };
 
 	VkSwapchainKHR m_Swapchain;
 	VkFormat m_SwapchainImageFormat;

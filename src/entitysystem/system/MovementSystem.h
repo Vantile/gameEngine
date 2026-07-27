@@ -20,7 +20,7 @@ public:
 						ZoneScopedN("MovementSystem::Update Job");
 						glm::vec3& position = transform.m_Position;
 						std::mt19937 gen(std::random_device{}());
-						constexpr float diff = 0.01f;
+						constexpr float diff = 0.001f;
 						std::uniform_real_distribution<float> xDist(position.x - diff, position.x + diff);
 						std::uniform_real_distribution<float> yDist(position.y - diff, position.y + diff);
 						position.x = xDist(gen);

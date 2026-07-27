@@ -73,8 +73,8 @@ void VulkanRenderer::Init(size_t threadCount)
 
     m_Window = SDL_CreateWindow(
         "Engine",
-        WINDOW_WIDTH,
-        WINDOW_HEIGHT,
+        EngineParams::DEFAULT_WINDOW_WIDTH,
+        EngineParams::DEFAULT_WINDOW_HEIGHT,
         windowFlags);
 
     InitVulkan();
@@ -185,11 +185,12 @@ void VulkanRenderer::InitVulkan()
 
 void VulkanRenderer::InitSwapchain()
 {
-    CreateSwapchain(m_WindowExtent.width, m_WindowExtent.height);
+    EngineParams& engineParams = Engine::GetInstance().GetEngineParams();
+    CreateSwapchain(engineParams.windowWidth, engineParams.windowHeight);
 
     VkExtent3D drawImageExtent = {
-        m_WindowExtent.width,
-        m_WindowExtent.height,
+        engineParams.windowWidth,
+        engineParams.windowHeight,
         1
     };
 
@@ -501,10 +502,12 @@ void VulkanRenderer::ResizeSwapchain()
 
     int width, height;
     SDL_GetWindowSize(m_Window, &width, &height);
-    m_WindowExtent.width = width;
-    m_WindowExtent.height = height;
 
-    CreateSwapchain(m_WindowExtent.width, m_WindowExtent.height);
+    EngineParams& engineParams = Engine::GetInstance().GetEngineParams();
+    engineParams.windowWidth = width;
+    engineParams.windowHeight = height;
+
+    CreateSwapchain(engineParams.windowWidth, engineParams.windowHeight);
     m_ResizeRequested = false;
 }
 

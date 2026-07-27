@@ -1,6 +1,7 @@
 #include <engine/Engine.h>
 
 #include <entitysystem/ECSManager.h>
+#include <input/InputManager.h>
 #include <renderer/VulkanRenderer.h>
 #include <SDL3/SDL.h>
 #include <tracy/Tracy.hpp>
@@ -12,16 +13,18 @@ void Engine::Init()
 {
     tracy::SetThreadName("Main Thread");
 
+    m_Instance = this;
+
     m_ECSManager = std::make_unique<ECSManager>();
+    m_InputManager = std::make_unique<InputManager>();
     m_Renderer = std::make_unique<VulkanRenderer>();
     m_JobSystem = std::make_unique<JobSystem>();
 
     constexpr size_t threadCount = 4;
     m_ECSManager->Init();
+    m_InputManager->Init();
     m_Renderer->Init(threadCount);
     m_JobSystem->Init(threadCount);
-
-    m_Instance = this;
 }
 
 void Engine::Run()
@@ -42,6 +45,7 @@ void Engine::Run()
                 bQuit = true;
             }
 
+            m_InputManager->ProcessSDLEvent(e);
             m_Renderer->ProcessSDLEvent(e);
         }
 
@@ -64,9 +68,6 @@ void Engine::Run()
 
         simCounter.Wait();
 
-        //m_ECSManager->Run(m_FrameData);
-        //m_Renderer->Run(m_FrameData);
-
         FrameMark;
     }
 }
@@ -74,10 +75,12 @@ void Engine::Run()
 void Engine::Cleanup()
 {
     m_ECSManager->Cleanup();
+    m_InputManager->Cleanup();
     m_Renderer->Cleanup();
     m_JobSystem->Shutdown();
 
     m_ECSManager.release();
+    m_InputManager.release();
     m_Renderer.release();
     m_JobSystem.release();
 
