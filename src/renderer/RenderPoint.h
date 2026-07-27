@@ -15,6 +15,7 @@ public:
 	void CreateStagingBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 
 	Vertex& GetVertex() { return m_Vertex; }
+	const Vertex& GetVertex() const { return m_Vertex; }
 
 	const AllocatedBuffer& GetVertexBuffer() { return m_VertexBuffer; }
 	const VkDeviceAddress& GetVertexBufferAddress() { return m_VertexBufferAddress; }

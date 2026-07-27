@@ -1,7 +1,6 @@
 #pragma once
 
 #include <glm/mat4x4.hpp>
-#include <memory>
 #include <vector>
 #include <vulkan/vulkan.h>
 
@@ -13,7 +12,7 @@ public:
 	void InitPipeline(VkDevice device, VkFormat drawImageFormat, VkFormat depthImageFormat, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts);
 	void DeletePipeline(VkDevice device);
 
-	void Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<std::shared_ptr<Mesh>>& points, const std::vector<VkDescriptorSet>& descriptorSets);
+	void Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<Mesh*>& points, const std::vector<VkDescriptorSet>& descriptorSets);
 
 private:
 	struct PushConstants

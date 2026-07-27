@@ -4,7 +4,6 @@
 #include <deque>
 #include <engine/FrameData.h>
 #include <functional>
-#include <memory>
 #include <mutex>
 #include <renderer/MeshRenderer.h>
 #include <renderer/PointRenderer.h>
@@ -69,11 +68,11 @@ struct WorldContext
 
 struct DrawContext
 {
-	std::vector<std::shared_ptr<RenderPoint>> m_EntityDrawPoints;
-	std::vector<std::shared_ptr<Mesh>> m_EntityDrawMeshes;
+	std::vector<RenderPoint*> m_EntityDrawPoints;
+	std::vector<Mesh*> m_EntityDrawMeshes;
 
-	std::unordered_map<EntityID, std::shared_ptr<RenderPoint>> m_EnginePoints;
-	std::unordered_map<EntityID, std::shared_ptr<Mesh>> m_EngineMeshes;
+	std::unordered_map<EntityID, RenderPoint*> m_EnginePoints;
+	std::unordered_map<EntityID, Mesh*> m_EngineMeshes;
 
 	TracyLockable(std::mutex, m_EntityDrawPointsMutex);
 	TracyLockable(std::mutex, m_EntityDrawMeshesMutex);

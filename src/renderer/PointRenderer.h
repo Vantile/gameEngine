@@ -1,6 +1,5 @@
 #pragma once
 
-#include <memory>
 #include <renderer/Vertex.h>
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -13,7 +12,7 @@ public:
 	void InitPipeline(VkDevice device, VkFormat drawImageFormat, VkFormat depthImageFormat);
 	void DeletePipeline(VkDevice device);
 
-	void Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<std::shared_ptr<RenderPoint>>& points);
+	void Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<RenderPoint*>& points);
 
 private:
 	struct PushConstants

@@ -47,7 +47,7 @@ void MeshRenderer::DeletePipeline(VkDevice device)
     vkDestroyPipeline(device, m_MeshPipeline, nullptr);
 }
 
-void MeshRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<std::shared_ptr<Mesh>>& meshes, const std::vector<VkDescriptorSet>& descriptorSets)
+void MeshRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<Mesh*>& meshes, const std::vector<VkDescriptorSet>& descriptorSets)
 {
     ZoneScoped;
 
@@ -79,7 +79,7 @@ void MeshRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, co
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
-    for (std::shared_ptr<Mesh> mesh : meshes)
+    for (Mesh* mesh : meshes)
     {
         ZoneScopedN("MeshRenderer::Draw MeshDraw")
 

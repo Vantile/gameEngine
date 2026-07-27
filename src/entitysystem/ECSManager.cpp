@@ -3,14 +3,15 @@
 #include <entitysystem/EntityRegistry.h>
 #include <entitysystem/system/MovementSystem.h>
 #include <entitysystem/system/RenderSystem.h>
+#include <memory/Memory.h>
 #include <tracy/Tracy.hpp>
 
 void ECSManager::Init()
 {
-	m_Registry = std::make_unique<EntityRegistry>();
+	m_Registry = engineNew(EntityRegistry);
 
-	m_Systems.push_back(std::make_unique<MovementSystem>());
-	m_Systems.push_back(std::make_unique<RenderSystem>());
+	m_Systems.push_back(engineNew(MovementSystem));
+	m_Systems.push_back(engineNew(RenderSystem));
 
 	// Create entities
 	EntityID entity1 = m_Registry->CreateEntity();
@@ -81,14 +82,20 @@ void ECSManager::Run(FrameData& frameData)
 		m_Registry->Emplace(newEntity, renderablePoint);
 	}
 
-	for (std::unique_ptr<System>& system : m_Systems)
+	for (System* system : m_Systems)
 	{
-		system->Update(*m_Registry.get(), frameData);
+		assert(system != nullptr);
+		system->Update(*m_Registry, frameData);
 	}
 }
 
 void ECSManager::Cleanup()
 {
+	for (System* system : m_Systems)
+	{
+		engineDelete(system);
+	}
 	m_Systems.clear();
-	m_Registry.release();
+
+	engineDelete(m_Registry);
 }

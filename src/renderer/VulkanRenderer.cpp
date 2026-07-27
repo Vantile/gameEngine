@@ -6,6 +6,7 @@
 #include <execution>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
+#include <memory/Memory.h>
 #include <renderer/Mesh.h>
 #include <renderer/PipelineBuilder.h>
 #include <renderer/RenderPoint.h>
@@ -99,8 +100,18 @@ void VulkanRenderer::Cleanup()
     {
         vkDeviceWaitIdle(m_Device);
 
+        for (auto [_, point] : m_DrawContext.m_EnginePoints)
+        {
+            engineDelete(point);
+        }
         m_DrawContext.m_EnginePoints.clear();
+
+        for (auto [_, mesh] : m_DrawContext.m_EngineMeshes)
+        {
+            engineDelete(mesh);
+        }
         m_DrawContext.m_EngineMeshes.clear();
+
         m_DrawContext.m_EntityDrawPoints.clear();
         m_DrawContext.m_EntityDrawMeshes.clear();
 
@@ -987,7 +998,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
     size_t chunkSize = (objectCount + threadCount - 1) / threadCount;
 
     std::vector<std::span<RenderObject>> renderObjects(threadCount);
-    std::vector<std::vector<std::pair<EntityID, std::shared_ptr<RenderPoint>>>> points(threadCount);
+    std::vector<std::vector<std::pair<EntityID, RenderPoint*>>> points(threadCount);
 
     for (size_t i = 0; i < threadCount; ++i)
     {
@@ -1002,7 +1013,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
         renderObjects[i] = std::span{ frameData.renderObjects.data() + begin, end - begin };
 
         std::span<RenderObject>* threadRenderObjects = &renderObjects[i];
-        std::vector<std::pair<EntityID, std::shared_ptr<RenderPoint>>>* threadPoints = &points[i];
+        std::vector<std::pair<EntityID, RenderPoint*>>* threadPoints = &points[i];
         ThreadData* threadData = &m_ThreadData[i];
         jobSystem.Submit({
         [threadRenderObjects, threadPoints, threadData, this]()
@@ -1015,7 +1026,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
                 if (object.point)
                 {
                     assert(object.vertices.size() == 1);
-                    std::shared_ptr<RenderPoint> point;
+                    RenderPoint* point = nullptr;
                     if (m_DrawContext.m_EnginePoints.contains(object.entityID))
                     {
                         point = m_DrawContext.m_EnginePoints.at(object.entityID);
@@ -1026,7 +1037,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
                     }
                     else
                     {
-                        point = std::make_shared<RenderPoint>();
+                        point = engineNew(RenderPoint);
 
                         //m_DrawContext.m_EnginePoints[object.entityID] = point;
 
@@ -1092,16 +1103,16 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
     }
 
     //std::vector<std::vector<std::pair<EntityID, RenderPoint>>> points(threadCount);
-    for (std::vector<std::pair<EntityID, std::shared_ptr<RenderPoint>>>& threadPoints : points)
+    for (std::vector<std::pair<EntityID, RenderPoint*>>& threadPoints : points)
     {
-        for (std::pair<EntityID, std::shared_ptr<RenderPoint>>& threadPoint : threadPoints)
+        for (std::pair<EntityID, RenderPoint*>& threadPoint : threadPoints)
         {
-            m_DrawContext.m_EnginePoints[threadPoint.first] = std::move(threadPoint.second);
+            m_DrawContext.m_EnginePoints[threadPoint.first] = threadPoint.second;
         }
     }
 
     m_DrawContext.m_EntityDrawPoints.clear();
-    std::for_each(std::execution::par, std::begin(m_DrawContext.m_EnginePoints), std::end(m_DrawContext.m_EnginePoints), [&](const std::pair<EntityID, std::shared_ptr<RenderPoint>>& pair)
+    std::for_each(std::execution::par, std::begin(m_DrawContext.m_EnginePoints), std::end(m_DrawContext.m_EnginePoints), [&](const std::pair<EntityID, RenderPoint*>& pair)
     {
         std::lock_guard<LockableBase(std::mutex)> lock(m_DrawContext.m_EntityDrawPointsMutex);
         LockMark(m_DrawContext.m_EntityDrawPointsMutex);
@@ -1109,7 +1120,7 @@ void VulkanRenderer::UpdateScene(FrameData& frameData)
     });
 
     m_DrawContext.m_EntityDrawMeshes.clear();
-    std::for_each(std::execution::par, std::begin(m_DrawContext.m_EngineMeshes), std::end(m_DrawContext.m_EngineMeshes), [&](const std::pair<EntityID, std::shared_ptr<Mesh>>& pair)
+    std::for_each(std::execution::par, std::begin(m_DrawContext.m_EngineMeshes), std::end(m_DrawContext.m_EngineMeshes), [&](const std::pair<EntityID, Mesh*>& pair)
     {
         std::lock_guard<LockableBase(std::mutex)> lock(m_DrawContext.m_EntityDrawMeshesMutex);
         LockMark(m_DrawContext.m_EntityDrawMeshesMutex);

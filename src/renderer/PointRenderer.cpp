@@ -45,7 +45,7 @@ void PointRenderer::DeletePipeline(VkDevice device)
     vkDestroyPipeline(device, m_PointPipeline, nullptr);
 }
 
-void PointRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<std::shared_ptr<RenderPoint>>& points)
+void PointRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, const std::vector<RenderPoint*>& points)
 {
     ZoneScoped;
 
@@ -70,7 +70,7 @@ void PointRenderer::Draw(VkCommandBuffer commandBuffer, VkExtent2D drawExtent, c
     scissor.extent.height = height;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    for (const std::shared_ptr<RenderPoint>& point : points)
+    for (const RenderPoint* point : points)
     {
         ZoneScopedN("PointRenderer::Draw PointDraw");
 

@@ -4,7 +4,7 @@
 #include <entitysystem/EntityPool.h>
 #include <entitysystem/SparseSet.h>
 #include <entitysystem/View.h>
-#include <memory>
+#include <memory/Memory.h>
 #include <unordered_map>
 
 class EntityRegistry
@@ -35,7 +35,7 @@ private:
 private:
 	EntityPool m_EntityPool;
 
-	std::unordered_map<ComponentTypeID, std::unique_ptr<ISparseSet>> m_Sets;
+	std::unordered_map<ComponentTypeID, ISparseSet*> m_Sets;
 };
 
 #include <entitysystem/EntityRegistry.inl>

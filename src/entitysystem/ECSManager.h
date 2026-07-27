@@ -2,7 +2,6 @@
 
 #include <entitysystem/EntityRegistry.h>
 #include <entitysystem/system/System.h>
-#include <memory>
 #include <queue>
 #include <vector>
 
@@ -20,6 +19,6 @@ public:
 private:
 	std::queue<glm::vec3> m_SpawnQueue;
 
-	std::unique_ptr<EntityRegistry> m_Registry;
-	std::vector<std::unique_ptr<System>> m_Systems;
+	EntityRegistry* m_Registry;
+	std::vector<System*> m_Systems;
 };

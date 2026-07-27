@@ -2,6 +2,7 @@
 
 #include <entitysystem/ECSManager.h>
 #include <input/InputManager.h>
+#include <memory/Memory.h>
 #include <renderer/VulkanRenderer.h>
 #include <SDL3/SDL.h>
 #include <tracy/Tracy.hpp>
@@ -15,10 +16,10 @@ void Engine::Init()
 
     m_Instance = this;
 
-    m_ECSManager = std::make_unique<ECSManager>();
-    m_InputManager = std::make_unique<InputManager>();
-    m_Renderer = std::make_unique<VulkanRenderer>();
-    m_JobSystem = std::make_unique<JobSystem>();
+    m_ECSManager = engineNew(ECSManager);
+    m_InputManager = engineNew(InputManager);
+    m_Renderer = engineNew(VulkanRenderer);
+    m_JobSystem = engineNew(JobSystem);
 
     constexpr size_t threadCount = 4;
     m_ECSManager->Init();
@@ -79,10 +80,10 @@ void Engine::Cleanup()
     m_Renderer->Cleanup();
     m_JobSystem->Shutdown();
 
-    m_ECSManager.release();
-    m_InputManager.release();
-    m_Renderer.release();
-    m_JobSystem.release();
+    engineDelete(m_ECSManager);
+    engineDelete(m_InputManager);
+    engineDelete(m_Renderer);
+    engineDelete(m_JobSystem);
 
     m_Instance = nullptr;
 }

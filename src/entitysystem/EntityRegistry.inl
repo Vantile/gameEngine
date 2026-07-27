@@ -5,9 +5,9 @@ SparseSet<T>& EntityRegistry::GetPool()
 	auto it = m_Sets.find(id);
 	if (it == m_Sets.end())
 	{
-		auto [inserted, _] = m_Sets.emplace(id, std::make_unique<SparseSet<T>>());
-		return *static_cast<SparseSet<T>*>(inserted->second.get());
+		auto [inserted, _] = m_Sets.emplace(id, engineNew(SparseSet<T>));
+		return *static_cast<SparseSet<T>*>(inserted->second);
 	}
 
-	return *static_cast<SparseSet<T>*>(it->second.get());
+	return *static_cast<SparseSet<T>*>(it->second);
 }

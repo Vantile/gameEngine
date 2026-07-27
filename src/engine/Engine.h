@@ -3,7 +3,6 @@
 #include <cassert>
 #include <engine/FrameData.h>
 #include <engine/Job.h>
-#include <memory>
 
 class ECSManager;
 class InputManager;
@@ -29,9 +28,9 @@ public:
 
 	static Engine& GetInstance() { assert(m_Instance != nullptr); return *m_Instance; }
 
-	ECSManager& GetECSManager() { assert(m_ECSManager != nullptr); return *m_ECSManager.get(); }
+	ECSManager& GetECSManager() { assert(m_ECSManager != nullptr); return *m_ECSManager; }
 
-	JobSystem& GetJobSystem() { assert(m_JobSystem != nullptr); return *m_JobSystem.get(); }
+	JobSystem& GetJobSystem() { assert(m_JobSystem != nullptr); return *m_JobSystem; }
 
 	EngineParams& GetEngineParams() { return m_EngineParams; }
 
@@ -39,8 +38,9 @@ private:
 	inline static Engine* m_Instance;
 	FrameData m_FrameData;
 	EngineParams m_EngineParams{};
-	std::unique_ptr<ECSManager> m_ECSManager;
-	std::unique_ptr<InputManager> m_InputManager;
-	std::unique_ptr<VulkanRenderer> m_Renderer;
-	std::unique_ptr<JobSystem> m_JobSystem;
+
+	ECSManager* m_ECSManager = nullptr;
+	InputManager* m_InputManager = nullptr;
+	VulkanRenderer* m_Renderer = nullptr;
+	JobSystem* m_JobSystem = nullptr;
 };
